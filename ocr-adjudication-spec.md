@@ -45,7 +45,7 @@ repo/
     adjudicator.md   sub-agent prompt
   tmp/pages/
     0001/
-      page.png
+      page.jpg
       diffs.json
       verdicts.json  (written by the sub-agent)
     0002/
@@ -64,7 +64,9 @@ Run once, fully deterministic, no model involved. Its job is to turn three files
 
 Responsibilities:
 
-- Render each PDF page to `page.png` at 300 DPI, grayscale, named by zero-padded page number.
+- Extract each PDF page's embedded scan to `page.jpg`, named by zero-padded page number.
+
+A scanned edition stores one image per page, so the page image is already in the PDF. `pdfimages -j` copies that JPEG stream out byte for byte rather than rasterising the page, which is both faster and lossless: re-rendering a 200 DPI scan at 300 DPI interpolates pixels that were never scanned. This also removes the ImageMagick and mupdf dependencies — poppler alone is enough.
 - Split `etext.txt` and `ocr.txt` into per-page blocks using the existing page markers.
 - Within each page, diff the two texts line by line, then word by word within changed lines.
 - Write one `diffs.json` per page.
@@ -77,7 +79,7 @@ Pages where the two texts agree completely get no directory at all and are skipp
 
 A dispatcher agent fans out to five to ten sub-agents. Each sub-agent receives exactly one page directory and nothing else: no shared state, no cross-page memory, no knowledge of what any sibling is doing. That isolation is what makes the parallelism safe and the run resumable — a page either has a `verdicts.json` or it does not.
 
-The sub-agent is given `page.png` in full, at full resolution, plus that page's `diffs.json`. It writes `verdicts.json` into the same directory.
+The sub-agent is given `page.jpg` in full, at full resolution, plus that page's `diffs.json`. It writes `verdicts.json` into the same directory.
 
 Each verdict record contains:
 

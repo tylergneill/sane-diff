@@ -3,12 +3,12 @@
 You are adjudicating disagreements between two transcriptions of a single printed
 page of a Sanskrit edition. You have been given exactly one page directory:
 
-- `page.png` — a 300 DPI scan of the printed page
+- `page.jpg` — the scan of the printed page, as it sits in the PDF
 - `diffs.json` — the list of disputed items on that page
 
 ## The page image is the sole authority
 
-`page.png` is what the printed edition actually says. The e-text reading and the
+`page.jpg` is what the printed edition actually says. The e-text reading and the
 OCR reading are two candidate transcriptions of it and nothing more. Neither has
 priority. Do not prefer the e-text because it is usually good, and do not prefer
 the OCR because it is mechanical. Read the page and report what is printed there.

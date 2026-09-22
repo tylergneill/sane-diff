@@ -1,24 +1,23 @@
-# OCR adjudication pipeline
+# Claude text diff harmonizer
 
-Adjudicates disagreements between a Sanskrit e-text and OCR of the same printed
-edition, using the scanned page as ground truth. Design and rationale:
-`ocr-adjudication-spec.md`.
+A workflow for using Claude to systematically adjudicate disagreements between two structured Sanskrit e-text files using its vision and natural language capabilities.
 
 ## Setup
 
-Put in `input/`:
+Put in `input/` two page- and line-aligned versions of a text, e.g.:
 
 | file | |
 |---|---|
-| `etext.txt` | the e-text, one line per printed line, page-aligned |
-| `ocr.txt` | OCR of the same edition, same alignment |
-| `source.pdf` | the scan |
+| `etext.txt` | a pre-existing e-text |
+| `ocr.txt` | OCR output of the same edition, with same page/line alignment |
+| `source.pdf` | the edition scan |
 | `notes.md` | optional; passed to every sub-agent |
 
 Page markers are lines reading `<p.12>`. For a different format pass
 `--marker` a regex whose first capture group is the page number.
 
-Install `mupdf-tools` (or `poppler` plus ImageMagick). Nothing else to install.
+Brew-install `poppler`. Nothing else is required; `pip install tqdm` gets you
+progress bars instead of a plain counter.
 
 ## Run
 
@@ -27,8 +26,13 @@ python3 scripts/prep.py                 # or --pages 1-9 to limit
 python3 scripts/pending.py              # pages awaiting adjudication
 ```
 
-Then fan out to sub-agents — see `agents/dispatcher.md`. Each writes a
-`verdicts.json` into its page directory.
+For stage two, open Claude Code in this repo and tell it:
+
+> Adjudicate the pending pages using subagents, following `agents/dispatcher.md`.
+
+It dispatches one sub-agent per page, each writing a `verdicts.json` into its
+page directory, and repeats until nothing is pending. Then it runs the last two
+steps for you:
 
 ```sh
 python3 scripts/apply.py
