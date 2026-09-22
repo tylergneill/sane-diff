@@ -87,6 +87,10 @@ agent's note, and opens each page image as it goes. On a tty it clears and
 pauses between pages; `--no-clear` prints them in one go instead, and `--pages`
 limits the walk (`--pages 12-24,96`).
 
+The scan opens without raising the viewer, so the keyboard stays with the
+prompt. Put the viewer window where you can see it before you start — it will
+not come to the front on its own.
+
 Three modes, narrowest first:
 
 | flag | shows |
@@ -131,7 +135,31 @@ number counts lines in the e-text, blank separator lines included, so it runs
 ahead of the printed line count on the scan — use it to get near the right spot,
 then match on the text itself.
 
-To reject a verdict, edit that page's `verdicts.json` and re-run `apply.py`.
+### Rejecting a verdict
+
+The prompt between pages takes a choice as well as `enter`:
+
+```
+[enter] next page, [e] e-text, [o] ocr, [ctrl-c] stop
+```
+
+`e` or `o` rewrites that verdict to the named source and writes
+`verdicts.json` straight away, so `ctrl-c` keeps whatever you have already
+decided. Where a page holds several items they are numbered, and the choice
+takes the number with it — `e3` picks the e-text for item 3.
+
+A verdict decided this way is recorded as `decided_by: human` at `high`
+confidence. It stops being flagged and drops out of later walks: you settled
+it, so there is nothing left to ask. `report.py` and `--summary` both report
+how many items were decided this way.
+
+Re-run `apply.py` afterwards to fold the changes into `output/`.
+
+You can also edit a page's `verdicts.json` by hand, which is the only route
+for a reading neither source got right — set `choice` to `other` and write the
+`reading` yourself. Editing `corrected.txt` directly works only if you are
+done for good: `apply.py` regenerates it from the verdicts and will overwrite
+anything you put there, and the reports keep describing the unedited run.
 
 ## Caveats
 

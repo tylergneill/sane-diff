@@ -88,6 +88,7 @@ Each verdict record contains:
 - `reading` — the final adjudicated text; required when choice is `other`, and echoing the chosen source otherwise
 - `confidence` — high, medium, or low
 - `note` — one short sentence, present only when choice is `other` or confidence is low
+- `decided_by` — written only by the review tool, never by an agent, and only on a verdict a human overrode. It records that the call was made by a person looking at the scan, which the confidence score cannot express: a reviewed verdict is `high` like any other, and would otherwise be indistinguishable from a confident machine reading. Absent means the agent decided, which the reports render as `agent`.
 
 When neither candidate matches what is printed, the agent commits to its own reading based on what it sees on the page and on what is sound in the language, rather than deferring or leaving the item blank. That is recorded as `other`, and every such item surfaces for review.
 

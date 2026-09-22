@@ -24,6 +24,7 @@ Both it and the walk respect --pages.
 
 import argparse
 import csv
+import json
 import subprocess
 import sys
 from collections import Counter
@@ -91,15 +92,52 @@ def summary(counts):
     table(["source"] + CONFIDENCES + ["total"], body)
 
 
+def override(page, item_id, choice):
+    """Rewrite one verdict in a page's verdicts.json, leaving its siblings alone.
+
+    The reading is taken from diffs.json rather than retyped, so it cannot
+    drift from the source it claims to be. Confidence becomes `high` -- a human
+    looked at the scan, which is a stronger warrant than the agent's own -- and
+    `decided_by: human` records whose call it was, so the reports can tell a
+    confirmed reading from a confident machine one.
+    """
+    page_dir = PAGES / f"{page:04d}"
+    verdicts_path = page_dir / "verdicts.json"
+    diffs_path = page_dir / "diffs.json"
+    if not verdicts_path.exists() or not diffs_path.exists():
+        return f"page {page}: verdicts.json or diffs.json missing"
+
+    diffs = json.loads(diffs_path.read_text(encoding="utf-8"))
+    item = next((i for i in diffs["items"] if i["id"] == item_id), None)
+    if item is None:
+        return f"{item_id}: not in diffs.json"
+    reading = item.get(choice, "")
+
+    data = json.loads(verdicts_path.read_text(encoding="utf-8"))
+    for v in data.get("verdicts", []):
+        if v.get("id") == item_id:
+            v.clear()
+            v.update({"id": item_id, "choice": choice, "reading": reading,
+                      "confidence": "high", "decided_by": "human"})
+            break
+    else:
+        return f"{item_id}: not in verdicts.json"
+
+    verdicts_path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return None
+
+
 def clear():
     """Clear the screen, falling back to blank lines where that is not possible."""
     if subprocess.run(["clear"], check=False).returncode != 0:
         print("\n" * 4)
 
 
-def show(row):
+def show(row, n=None):
     blank = "(none)"
-    print(f"  {row['id']}  line {row['line']}  [{row['choice']}/{row['confidence']}]")
+    tag = f"{n}) " if n else "  "
+    print(f"  {tag}{row['id']}  line {row['line']}  [{row['choice']}/{row['confidence']}]")
     print(f"    etext : {row['etext'] or blank}")
     print(f"    ocr   : {row['ocr'] or blank}")
     print(f"    →     : {row['reading'] or blank}")
@@ -141,13 +179,19 @@ def main():
     only = parse_pages(args.pages)
 
     if args.summary:
-        counts = Counter((r["choice"], r["confidence"]) for r in rows(REPORT, only))
-        summary(counts)
+        tallied = list(rows(REPORT, only))
+        summary(Counter((r["choice"], r["confidence"]) for r in tallied))
+        # A reviewed verdict counts as high/etext like any other, so say how
+        # many of these cells were settled by hand rather than by an agent.
+        decided = sum(1 for r in tallied if r.get("decided_by") == "human")
+        if decided:
+            print(f"\n{decided} of {len(tallied)} decided in review.")
         return
 
     grouped = {}
     for row in rows(REPORT, only):
-        if not keep(row):
+        # Already settled by hand; walking it again would re-ask a closed question.
+        if row.get("decided_by") == "human" or not keep(row):
             continue
         grouped.setdefault(int(row["page"]), []).append(row)
 
@@ -157,27 +201,73 @@ def main():
 
     total = sum(len(v) for v in grouped.values())
     pages = sorted(grouped)
-    paging = not args.no_clear and sys.stdout.isatty() and len(pages) > 1
+    # Prompting needs a terminal; clearing additionally needs somewhere to go.
+    interactive = not args.no_clear and sys.stdout.isatty()
+    paging = interactive and len(pages) > 1
 
     if not paging:
         print(f"{total} item(s) [{label}] on {len(pages)} page(s)\n")
 
+    changed = 0
     for idx, page in enumerate(pages, 1):
+        items = grouped[page]
         scan = PAGES / f"{page:04d}" / "page.jpg"
         if paging:
             clear()
         print(f"=== page {page}  ({idx}/{len(pages)} pages, "
-              f"{len(grouped[page])} of {total} items)  {scan} ===")
-        for row in grouped[page]:
-            show(row)
+              f"{len(items)} of {total} items)  {scan} ===")
+        for n, row in enumerate(items, 1):
+            show(row, n if len(items) > 1 else None)
         if scan.exists():
-            subprocess.run(["open", str(scan)], check=False)
-        if paging and idx < len(pages):
+            # -g loads the scan without raising the viewer, so the keyboard
+            # stays with this prompt and there is no focus flicker per page.
+            # The trade-off: a viewer window behind the terminal stays behind.
+            subprocess.run(["open", "-g", str(scan)], check=False)
+        if not interactive:
+            continue
+
+        pick = "[e] e-text, [o] ocr" if len(items) == 1 else "[e2] e-text of 2, [o1] ocr of 1"
+        last = idx == len(pages)
+        nxt = "finish" if last else "next page"
+        while True:
             try:
-                input("    [enter] for next page, ctrl-c to stop ")
+                reply = input(f"    [enter] {nxt}, {pick}, [ctrl-c] stop ").strip().lower()
             except (EOFError, KeyboardInterrupt):
                 print()
-                return
+                reply = None
+            if not reply:
+                break
+            choice = {"e": "etext", "o": "ocr"}.get(reply[:1])
+            rest = reply[1:].strip()
+            if choice is None or (rest and not rest.isdigit()):
+                print(f"    ? {reply!r} — expected enter, e, o, or e/o with an item number")
+                continue
+            if rest:
+                pos = int(rest)
+            elif len(items) == 1:
+                pos = 1
+            else:
+                print(f"    ? which item — {reply[:1]}1 to {reply[:1]}{len(items)}")
+                continue
+            if not 1 <= pos <= len(items):
+                print(f"    ? no item {pos} on this page (1 to {len(items)})")
+                continue
+            row = items[pos - 1]
+            problem = override(page, row["id"], choice)
+            if problem:
+                print(f"    ! {problem}")
+                continue
+            row["choice"] = choice
+            row["reading"] = row[choice]
+            row["confidence"] = "high"
+            changed += 1
+            print(f"    ✓ {row['id']} → {choice} {row[choice] or '(empty)'}")
+        if reply is None:
+            break
+
+    if changed:
+        print(f"\n{changed} verdict(s) rewritten; re-run scripts/apply.py to "
+              f"regenerate output/")
 
 
 if __name__ == "__main__":

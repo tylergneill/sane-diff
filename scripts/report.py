@@ -12,7 +12,8 @@ import json
 import sys
 from pathlib import Path
 
-COLUMNS = ["page", "line", "id", "etext", "ocr", "reading", "choice", "confidence", "note"]
+COLUMNS = ["page", "line", "id", "etext", "ocr", "reading", "choice", "confidence",
+           "decided_by", "note"]
 CHOICES = ("etext", "ocr", "other")
 CONFIDENCES = ("high", "medium", "low")
 
@@ -83,6 +84,8 @@ def load_page(page_dir, problems):
             "reading": clean(reading),
             "choice": clean(choice),
             "confidence": clean(confidence),
+            # "agent" unless a human overrode the verdict in review.py.
+            "decided_by": clean(verdict.get("decided_by") or "agent"),
             "note": clean(verdict.get("note")),
         })
 
@@ -94,7 +97,13 @@ def load_page(page_dir, problems):
 
 
 def flagged(row):
-    """Rows needing human eyes: an agent override, or a weak reading."""
+    """Rows needing human eyes: an agent override, or a weak reading.
+
+    A verdict a human already decided in review is settled, however it started,
+    so it drops off the list rather than asking to be looked at twice.
+    """
+    if row["decided_by"] == "human":
+        return False
     return row["choice"] == "other" or row["confidence"] == "low"
 
 
@@ -144,6 +153,9 @@ def main():
     print(f"  etext: {by_choice['etext']}   ocr: {by_choice['ocr']}   other: {by_choice['other']}")
     print(f"  confidence — high: {by_confidence['high']}  "
           f"medium: {by_confidence['medium']}  low: {by_confidence['low']}")
+    decided = sum(1 for r in rows if r["decided_by"] == "human")
+    if decided:
+        print(f"  decided in review: {decided}")
     json_out = args.json_out or args.out.with_suffix(".json")
     json_out.write_text(json.dumps({
         "totals": {
