@@ -8,8 +8,8 @@ anything yourself.
 1. Run `python3 scripts/pending.py --list` to list page directories that have a
    `diffs.json` but no `verdicts.json`. Those are the pages needing work.
    Without `--list` it prints a one-line summary instead.
-2. Fan out to sub-agents, five to ten in flight at a time, using the prompt in
-   `agents/adjudicator.md`.
+2. Fan out to sub-agents, up to twenty-five in flight at a time, using the
+   prompt in `agents/adjudicator.md`.
 3. Give each sub-agent exactly one page directory and nothing else. No shared
    state, no cross-page context, no mention of what any sibling is doing or
    found. That isolation is what makes the parallelism safe.

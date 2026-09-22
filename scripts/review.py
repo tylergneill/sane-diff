@@ -15,7 +15,18 @@ Three modes, narrowest first:
   --all         every low- and medium-confidence verdict (the default).
 
 High-confidence etext and ocr verdicts are never shown; with 86 of 100 items
-here, reviewing them is reviewing the whole run.
+here, reviewing them is reviewing the whole run. They are not thereby beyond
+question — an agent can be confidently wrong, and nothing in the walk will
+surface it. Those are found by reading the output or diffing it against the
+e-text, and settled with --set.
+
+--set ID=CHOICE settles one named item without walking anything, at any
+confidence. It takes the reading from diffs.json rather than from you, so the
+text cannot drift from the source it names, and marks the item decided_by
+human. Editing verdicts.json by hand does the same job with two ways to go
+wrong: changing `choice` while leaving `reading` alone is silently ignored by
+apply.py, which writes `reading` verbatim, and retyping `reading` can put a
+third text into the output that neither source contains.
 
 --summary does something else entirely: instead of walking items it prints a
 source-by-confidence table of every verdict, high ones included, and exits.
@@ -25,6 +36,7 @@ Both it and the walk respect --pages.
 import argparse
 import csv
 import json
+import re
 import subprocess
 import sys
 from collections import Counter
@@ -154,6 +166,9 @@ def main():
                     help="print every page at once instead of clearing between them")
     ap.add_argument("--summary", action="store_true",
                     help="print a source-by-confidence table of every verdict and exit")
+    ap.add_argument("--set", metavar="ID=CHOICE", action="append", dest="settings",
+                    help="override one verdict without walking, e.g. p0002-002=ocr; "
+                         "repeatable. Works at any confidence, including high.")
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--overrides", action="store_true",
                       help="only `other` verdicts, at any confidence")
@@ -172,6 +187,32 @@ def main():
     else:
         keep = lambda row: row["confidence"] in {"low", "medium"}
         label = "low+medium confidence"
+
+    # --set settles a named item outright. It is the only way to reach a
+    # high-confidence verdict, which the walk deliberately never shows: meld or
+    # a reading eye finds those, not a confidence score.
+    if args.settings:
+        failed = False
+        for setting in args.settings:
+            item_id, _, choice = setting.partition("=")
+            if choice not in CHOICES[:2]:
+                print(f"{setting}: choice must be etext or ocr", file=sys.stderr)
+                failed = True
+                continue
+            match = re.fullmatch(r"p(\d{4})-\d+", item_id)
+            if not match:
+                print(f"{setting}: expected an id like p0002-002", file=sys.stderr)
+                failed = True
+                continue
+            problem = override(int(match.group(1)), item_id, choice)
+            if problem:
+                print(problem, file=sys.stderr)
+                failed = True
+            else:
+                print(f"{item_id} -> {choice} (decided_by: human)")
+        if not failed:
+            print("\nre-run scripts/apply.py and scripts/report.py to pick these up")
+        sys.exit(1 if failed else 0)
 
     if not REPORT.exists():
         sys.exit(f"review.py: {REPORT} not found; run scripts/report.py first")

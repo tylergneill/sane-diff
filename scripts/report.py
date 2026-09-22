@@ -123,6 +123,8 @@ def main():
                     help="default: alongside --out, named <stem>.flagged.tsv")
     ap.add_argument("--json-out", default=None, type=Path,
                     help="default: alongside --out, named <stem>.json")
+    ap.add_argument("--verdicts-out", default="output/verdicts.all.json", type=Path,
+                    help="every page's verdicts in one searchable file")
     args = ap.parse_args()
 
     if not args.work.is_dir():
@@ -167,8 +169,26 @@ def main():
         "items": rows,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
+    # The per-page verdicts.json files stay the unit of work -- the dispatcher
+    # resumes on their presence and the agents write them independently. This
+    # is a read-only consolidation of them, for searching and diffing.
+    pages = {}
+    for row in rows:
+        verdict = {"id": row["id"], "choice": row["choice"],
+                   "reading": row["reading"], "confidence": row["confidence"]}
+        if row["note"]:
+            verdict["note"] = row["note"]
+        if row["decided_by"] == "human":
+            verdict["decided_by"] = "human"
+        pages.setdefault(row["page"], []).append(verdict)
+
+    args.verdicts_out.parent.mkdir(parents=True, exist_ok=True)
+    args.verdicts_out.write_text(json.dumps(
+        [{"page": page, "verdicts": pages[page]} for page in sorted(pages)],
+        ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
     print(f"flagged for review: {len(flagged_rows)}")
-    print(f"wrote {args.out}, {flagged_out} and {json_out}")
+    print(f"wrote {args.out}, {flagged_out}, {json_out} and {args.verdicts_out}")
 
     if problems:
         print(f"\n{len(problems)} problem(s):", file=sys.stderr)
