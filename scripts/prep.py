@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage one: turn etext.txt, ocr.txt and source.pdf into work/pages/NNNN/.
+"""Stage one: turn etext.txt, ocr.txt and source.pdf into tmp/pages/NNNN/.
 
 Fully deterministic, no model involved. Renders each PDF page to a PNG,
 splits both texts into per-page blocks on their page markers, diffs them
@@ -177,7 +177,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--input", default="input", type=Path)
-    ap.add_argument("--work", default="work/pages", type=Path)
+    ap.add_argument("--work", default="tmp/pages", type=Path)
     ap.add_argument("--marker", default=DEFAULT_MARKER,
                     help="regex for a page marker line, group 1 = page number")
     ap.add_argument("--dpi", type=int, default=300)

@@ -173,7 +173,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--input", default="input", type=Path)
-    ap.add_argument("--work", default="work/pages", type=Path)
+    ap.add_argument("--work", default="tmp/pages", type=Path)
     ap.add_argument("--marker", default=r"^\s*<p\.(\d+)>\s*$")
     ap.add_argument("--out", default="output/corrected.txt", type=Path)
     ap.add_argument("--marked-out", default=None, type=Path,

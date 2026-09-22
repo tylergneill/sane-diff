@@ -37,8 +37,28 @@ python3 scripts/report.py
 
 Both write into `output/`.
 
-To redo a page, delete its `work/pages/NNNN/verdicts.json` and re-run from
-`pending.py`. An interrupted run resumes where it stopped.
+An interrupted run resumes where it stopped — `pending.py` lists whatever
+still lacks a `verdicts.json`.
+
+## Starting over
+
+`tmp/` and `output/` are both regenerable from `input/`. Nothing else is.
+
+```sh
+rm -rf tmp output
+python3 scripts/prep.py
+```
+
+Do this whenever `prep.py` changes how items are cut, because verdicts are
+keyed to item ids that renumber — a stale verdict then applies to the wrong
+item silently, with no error.
+
+`prep.py` alone is not enough: it writes `diffs.json` into existing page
+directories and leaves any `verdicts.json` beside it untouched, so old verdicts
+rejoin the run. Delete `tmp/` outright.
+
+To redo one page rather than all of them, delete just its
+`tmp/pages/NNNN/verdicts.json` and re-run from `pending.py`.
 
 ## Review
 
@@ -64,10 +84,6 @@ Keep the PDF open in its own viewer; the reports cite page and line.
 To reject a verdict, edit that page's `verdicts.json` and re-run `apply.py`.
 
 ## Caveats
-
-Verdicts are keyed to item ids that renumber whenever `prep.py` changes how
-items are cut. Stale verdicts then apply to the wrong item silently. After any
-such change, delete every `verdicts.json` and re-adjudicate.
 
 Every verdict is applied regardless of confidence; confidence controls the mark
 only.

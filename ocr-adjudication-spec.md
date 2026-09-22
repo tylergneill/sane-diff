@@ -43,7 +43,7 @@ repo/
   agents/
     dispatcher.md    fan-out prompt
     adjudicator.md   sub-agent prompt
-  work/pages/
+  tmp/pages/
     0001/
       page.png
       diffs.json
@@ -56,7 +56,7 @@ repo/
   output/report.json            same rows, machine-readable
 ```
 
-The working directory is disposable. Everything in `work/` is regenerable from the three input files, so it stays out of version control; `input/`, `scripts/`, `agents/` and the emitted deliverables are tracked.
+The working directory is disposable. Everything in `tmp/` is regenerable from the three input files, so it stays out of version control; `input/`, `scripts/`, `agents/` and the emitted deliverables are tracked.
 
 ## Stage one — prep.py
 
@@ -104,7 +104,7 @@ Alongside it, `corrected.marked.txt`: the same text with each adjudicated word c
 The report explains the corrected text rather than standing alone. It emits the same content in two forms:
 
 - `report.tsv` — one row per adjudicated item, with columns for page, line, item id, e-text reading, OCR reading, final reading, choice, confidence, and note. Sorted by page then line. Tab-separated rather than comma-separated, since Devanagari text and transliteration both tend to contain commas.
-- `report.json` — the same rows plus run-level totals, in machine-readable form. This is what the review interface consumes.
+- `report.json` — the same rows plus run-level totals, in machine-readable form.
 
 The script also prints a short summary to the terminal: total items adjudicated, counts by choice, and the number of rows flagged for attention.
 
@@ -117,15 +117,15 @@ Two categories flag for human review:
 
 Everything else stays silent. Alongside the full report, emit a filtered view containing only the flagged rows, so the review pass is short and the full file remains available as the audit trail.
 
-## Stage five — the review interface
+## Review
 
-A single self-contained page, opened in a browser, rendering the corrected text with every adjudicated word marked by confidence and by choice. It reads `report.json`.
+Review happens in an ordinary diff viewer. `output/corrected.txt` and `output/corrected.marked.txt` diff against the input e-text, and `output/report.tsv` supplies the choice, confidence and note behind each item.
 
-Review is by exception. Every verdict is already applied, so the interface exists to *reject or amend*, not to approve one item at a time — defaulting to approval is what the confidence scoring was for. Clicking a marked word shows the three candidates, the choice, the confidence and the note, and offers: keep the verdict, revert to the e-text, revert to the OCR, or type a different reading.
+Review is by exception. Every verdict is already applied, so review exists to *reject*, not to approve one item at a time — defaulting to approval is what the confidence scoring was for. A verdict is corrected by editing the page's `verdicts.json` and re-running `apply.py`, which keeps every stage regenerable from the inputs plus the verdicts.
 
-Review happens in an ordinary diff viewer: `output/corrected.txt` and `output/corrected.marked.txt` diff against the input e-text, and `output/report.tsv` supplies the choice, confidence and note behind each item. A purpose-built interface was tried and dropped — it re-implemented intra-line diff highlighting that existing tools already do better. A verdict is corrected by editing the page's `verdicts.json` and re-running `apply.py`, which keeps every stage regenerable from the inputs plus the verdicts.
+A purpose-built interface was built and then dropped. It re-implemented intra-line diff highlighting that existing tools already do better, and did it worse: a missing space inside a forty-character word highlighted all forty characters, which is feedback worse than none. Diff viewers isolate the differing characters, which is the whole question for most items.
 
-No page images side by side. The reviewer is expected to have the PDF open in its own viewer; duplicating four hundred page images into the browser buys little and costs a great deal.
+No page images side by side. The reviewer is expected to have the PDF open in its own viewer; duplicating four hundred page images buys little and costs a great deal.
 
 ## The sub-agent prompt
 

@@ -32,7 +32,7 @@ def pending_pages(work):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--work", default="work/pages", type=Path)
+    ap.add_argument("--work", default="tmp/pages", type=Path)
     ap.add_argument("--count", action="store_true", help="print only the number pending")
     args = ap.parse_args()
 

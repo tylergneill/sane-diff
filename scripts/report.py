@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stage three: merge every verdicts.json into report.tsv.
 
-Walks work/pages in page order, joins each verdict back to its diff item,
+Walks tmp/pages in page order, joins each verdict back to its diff item,
 and writes one row per adjudicated item. Tab-separated, because Devanagari
 text and transliteration both tend to contain commas. Also writes a filtered
 view holding only the rows flagged for human review.
@@ -104,7 +104,7 @@ def write_tsv(path, rows):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--work", default="work/pages", type=Path)
+    ap.add_argument("--work", default="tmp/pages", type=Path)
     ap.add_argument("--out", default="output/report.tsv", type=Path)
     ap.add_argument("--flagged-out", default=None, type=Path,
                     help="default: alongside --out, named <stem>.flagged.tsv")

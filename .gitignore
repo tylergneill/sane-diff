@@ -7,9 +7,9 @@ __pycache__/
 # Edition data: supplied per text, never carried in the repo.
 input/
 
-# The working directory is disposable: everything under work/ is
+# The working directory is disposable: everything under tmp/ is
 # regenerable from the files in input/.
-work/
+tmp/
 
 # Generated outputs. All of these come back from the three input files by
 # re-running the pipeline, so the repo tracks the scripts, not their results.
