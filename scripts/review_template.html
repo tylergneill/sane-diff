@@ -1,0 +1,851 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adjudication Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gentium+Book+Plus:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --paper: #faf7f2;
+    --paper-raised: #fffdfa;
+    --rule: #e3dcd1;
+    --rule-firm: #cfc5b6;
+    --ink: #1a1714;
+    --ink-soft: #5d554a;
+    --ink-faint: #8c8275;
+
+    --etext: #5c7360;
+    --etext-wash: #eaf0ea;
+    --ocr: #38637f;
+    --ocr-wash: #e6eef4;
+    --other: #a8552c;
+    --other-wash: #f7e9e0;
+    --accept: #4a6b4e;
+
+    --focus: #38637f;
+
+    --serif: "Gentium Book Plus", "Brill", "Charis SIL", Georgia, serif;
+    --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #171513;
+      --paper-raised: #201d1a;
+      --rule: #322d28;
+      --rule-firm: #453e37;
+      --ink: #ece6dd;
+      --ink-soft: #a89e91;
+      --ink-faint: #7d7365;
+
+      --etext: #8fae94;
+      --etext-wash: #1f2a21;
+      --ocr: #79aecd;
+      --ocr-wash: #18262e;
+      --other: #d98e5f;
+      --other-wash: #2e1f16;
+      --accept: #8fae94;
+
+      --focus: #79aecd;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #171513;
+    --paper-raised: #201d1a;
+    --rule: #322d28;
+    --rule-firm: #453e37;
+    --ink: #ece6dd;
+    --ink-soft: #a89e91;
+    --ink-faint: #7d7365;
+
+    --etext: #8fae94;
+    --etext-wash: #1f2a21;
+    --ocr: #79aecd;
+    --ocr-wash: #18262e;
+    --other: #d98e5f;
+    --other-wash: #2e1f16;
+    --accept: #8fae94;
+
+    --focus: #79aecd;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  .wrap {
+    max-width: 960px;
+    margin: 0 auto;
+    padding-inline: 20px;
+    padding-block: 0 96px;
+  }
+
+  /* ---- masthead ---- */
+
+  header {
+    padding-block: 36px 20px;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  h1 {
+    margin: 0;
+    font-family: var(--serif);
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  .sub {
+    margin-top: 6px;
+    color: var(--ink-soft);
+    font-size: 13.5px;
+    max-width: 62ch;
+  }
+
+  /* ---- totals ---- */
+
+  .totals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    margin-top: 22px;
+    border: 1px solid var(--rule-firm);
+    background: var(--paper-raised);
+  }
+
+  .tot {
+    flex: 1 1 auto;
+    min-width: 96px;
+    padding: 11px 15px;
+    border-right: 1px solid var(--rule);
+  }
+
+  .tot:last-child { border-right: 0; }
+
+  .tot-n {
+    font-family: var(--mono);
+    font-size: 19px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+  }
+
+  .tot-l {
+    margin-top: 2px;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--ink-faint);
+  }
+
+  .tot.is-etext .tot-n { color: var(--etext); }
+  .tot.is-ocr   .tot-n { color: var(--ocr); }
+  .tot.is-other .tot-n { color: var(--other); }
+
+  /* ---- filter bar ---- */
+
+  .bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding-block: 11px;
+    margin-bottom: 4px;
+    background: var(--paper);
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .bar-label {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--ink-faint);
+    margin-right: 2px;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .chip {
+    padding: 4px 11px;
+    font-size: 12.5px;
+    background: transparent;
+    border: 1px solid var(--rule-firm);
+    border-radius: 2px;
+    color: var(--ink-soft);
+  }
+
+  .chip:hover { border-color: var(--ink-faint); color: var(--ink); }
+
+  .chip[aria-pressed="true"] {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper);
+  }
+
+  .spacer { flex: 1 1 auto; }
+
+  .count {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-faint);
+  }
+
+  /* ---- lines ---- */
+
+  .page-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-top: 30px;
+    margin-bottom: 4px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .page-head h2 {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  .page-head .n {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+
+  .line {
+    display: grid;
+    grid-template-columns: 46px 1fr;
+    gap: 14px;
+    padding-block: 9px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .line-no {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-faint);
+    padding-top: 4px;
+    text-align: right;
+  }
+
+  .verse {
+    font-family: var(--serif);
+    font-size: 18.5px;
+    line-height: 1.75;
+    overflow-wrap: break-word;
+  }
+
+  /* ---- marked words ---- */
+
+  .w {
+    display: inline;
+    padding: 1px 2px;
+    border: 0;
+    border-radius: 2px;
+    background: transparent;
+    font: inherit;
+    text-decoration: none;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+
+  .w-etext { background: var(--etext-wash); box-shadow: inset 0 -2px 0 var(--etext); }
+  .w-ocr   { background: var(--ocr-wash);   box-shadow: inset 0 -2px 0 var(--ocr); }
+  .w-other { background: var(--other-wash); box-shadow: inset 0 -2px 0 var(--other); }
+
+  /* Confidence rides on the underline, so hue stays free for choice. */
+  .w-medium { box-shadow: inset 0 -2px 0 currentColor; opacity: 0.94; }
+  .w-etext.w-medium { box-shadow: inset 0 -3px 0 var(--etext); }
+  .w-ocr.w-medium   { box-shadow: inset 0 -3px 0 var(--ocr); }
+  .w-other.w-medium { box-shadow: inset 0 -3px 0 var(--other); }
+
+  .w-etext.w-low { box-shadow: inset 0 -3px 0 var(--etext); border-bottom: 2px dotted var(--etext); }
+  .w-ocr.w-low   { box-shadow: inset 0 -3px 0 var(--ocr);   border-bottom: 2px dotted var(--ocr); }
+  .w-other.w-low { box-shadow: inset 0 -3px 0 var(--other); border-bottom: 2px dotted var(--other); }
+
+  .w:hover { filter: brightness(0.96); }
+  .w:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .w[data-over="1"]::after {
+    content: "\2713";
+    font-family: var(--sans);
+    font-size: 0.6em;
+    vertical-align: super;
+    margin-left: 1px;
+    color: var(--accept);
+  }
+
+  .w[hidden] { display: none; }
+
+  /* ---- detail panel ---- */
+
+  .panel {
+    grid-column: 2;
+    margin-top: 8px;
+    border: 1px solid var(--rule-firm);
+    background: var(--paper-raised);
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-wrap: wrap;
+    padding: 9px 13px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .tag {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding: 2px 7px;
+    border-radius: 2px;
+  }
+
+  .tag-etext { background: var(--etext-wash); color: var(--etext); }
+  .tag-ocr   { background: var(--ocr-wash);   color: var(--ocr); }
+  .tag-other { background: var(--other-wash); color: var(--other); }
+
+  .tag-conf {
+    border: 1px solid var(--rule-firm);
+    color: var(--ink-soft);
+  }
+
+  .item-id {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-left: auto;
+  }
+
+  .cands {
+    display: grid;
+    grid-template-columns: 74px 1fr;
+  }
+
+  .cand {
+    display: contents;
+  }
+
+  .cand-k {
+    padding: 7px 13px;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--ink-faint);
+    border-top: 1px solid var(--rule);
+  }
+
+  .cand-v {
+    padding: 7px 13px;
+    font-family: var(--serif);
+    font-size: 16.5px;
+    border-top: 1px solid var(--rule);
+    overflow-wrap: break-word;
+  }
+
+  .cand-v.is-final { font-weight: 700; }
+  .cand-v .empty { color: var(--ink-faint); font-family: var(--sans); font-size: 13px; font-style: italic; }
+
+  .note {
+    padding: 9px 13px;
+    border-top: 1px solid var(--rule);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    background: var(--other-wash);
+  }
+
+  .acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    align-items: center;
+    padding: 10px 13px;
+    border-top: 1px solid var(--rule);
+  }
+
+  .act {
+    padding: 5px 11px;
+    font-size: 12.5px;
+    background: transparent;
+    border: 1px solid var(--rule-firm);
+    border-radius: 2px;
+    color: var(--ink-soft);
+  }
+
+  .act:hover { border-color: var(--ink-faint); color: var(--ink); }
+  .act:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+  .act[aria-pressed="true"] {
+    background: var(--accept);
+    border-color: var(--accept);
+    color: var(--paper);
+  }
+
+  .act-amend { margin-left: auto; }
+
+  .amend {
+    display: flex;
+    gap: 7px;
+    padding: 0 13px 11px;
+  }
+
+  .amend input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 6px 9px;
+    font-family: var(--serif);
+    font-size: 16px;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--rule-firm);
+    border-radius: 2px;
+  }
+
+  .amend input:focus-visible { outline: 2px solid var(--focus); outline-offset: -1px; }
+
+  /* ---- footer bar ---- */
+
+  .dock {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 11px 20px;
+    background: var(--paper-raised);
+    border-top: 1px solid var(--rule-firm);
+  }
+
+  .dock-txt {
+    font-size: 12.5px;
+    color: var(--ink-soft);
+  }
+
+  .dock-txt b {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+
+  .dl {
+    padding: 6px 14px;
+    font-size: 13px;
+    background: var(--ink);
+    border: 1px solid var(--ink);
+    border-radius: 2px;
+    color: var(--paper);
+  }
+
+  .dl[disabled] { opacity: 0.4; cursor: default; }
+  .dl:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .hint {
+    font-size: 12px;
+    color: var(--ink-faint);
+    font-family: var(--mono);
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 14px;
+    padding-top: 12px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    border-top: 1px solid var(--rule);
+  }
+
+  .key { display: inline-flex; align-items: center; gap: 6px; }
+
+  .sw {
+    display: inline-block;
+    width: 22px;
+    height: 12px;
+    border-radius: 2px;
+  }
+
+  .sw-etext { background: var(--etext-wash); box-shadow: inset 0 -2px 0 var(--etext); }
+  .sw-ocr   { background: var(--ocr-wash);   box-shadow: inset 0 -2px 0 var(--ocr); }
+  .sw-other { background: var(--other-wash); box-shadow: inset 0 -2px 0 var(--other); }
+
+  .empty-state {
+    padding: 44px 0;
+    text-align: center;
+    color: var(--ink-faint);
+    font-size: 14px;
+  }
+
+  @media (max-width: 560px) {
+    .line { grid-template-columns: 34px 1fr; gap: 10px; }
+    .verse { font-size: 17px; }
+    .cands { grid-template-columns: 62px 1fr; }
+    .panel { grid-column: 1 / -1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Adjudication review</h1>
+    <p class="sub">
+      Every verdict is already applied to <code>corrected.txt</code>. This page is for
+      rejecting or amending the ones that look wrong. Keep the printed edition open
+      alongside; each item cites its page and line.
+    </p>
+    <div class="totals" id="totals"></div>
+    <div class="legend">
+      <span class="key"><span class="sw sw-etext"></span> e-text kept</span>
+      <span class="key"><span class="sw sw-ocr"></span> OCR adopted</span>
+      <span class="key"><span class="sw sw-other"></span> agent override</span>
+      <span class="key">thicker or dotted underline = lower confidence</span>
+    </div>
+  </header>
+
+  <div class="bar">
+    <span class="bar-label">Show</span>
+    <button class="chip" id="f-all" aria-pressed="true">All</button>
+    <button class="chip" id="f-flag" aria-pressed="false">Flagged</button>
+    <button class="chip" id="f-other" aria-pressed="false">Overrides</button>
+    <button class="chip" id="f-low" aria-pressed="false">Low &amp; medium</button>
+    <button class="chip" id="f-done" aria-pressed="false">Reviewed</button>
+    <span class="spacer"></span>
+    <span class="count" id="count"></span>
+  </div>
+
+  <main id="body"></main>
+</div>
+
+<div class="dock">
+  <span class="dock-txt"><b id="dock-n">0</b> override<span id="dock-s">s</span> recorded</span>
+  <span class="spacer"></span>
+  <span class="hint" id="hint">save next to corrected.txt, then re-run apply.py</span>
+  <button class="dl" id="dl" disabled>Download reviews.json</button>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+
+const overrides = new Map(Object.entries(DATA.existing || {}));
+let filter = "all";
+let openItem = null;
+
+const el = (t, c, txt) => {
+  const n = document.createElement(t);
+  if (c) n.className = c;
+  if (txt !== undefined) n.textContent = txt;
+  return n;
+};
+
+/* ---------- totals ---------- */
+
+function renderTotals() {
+  const t = DATA.totals;
+  const host = document.getElementById("totals");
+  host.textContent = "";
+  const cells = [
+    ["", t.items, "items"],
+    ["is-etext", t.by_choice.etext, "e-text"],
+    ["is-ocr", t.by_choice.ocr, "OCR"],
+    ["is-other", t.by_choice.other, "override"],
+    ["", t.by_confidence.high, "high conf."],
+    ["", t.by_confidence.medium + t.by_confidence.low, "med / low"],
+    ["", t.flagged, "flagged"],
+  ];
+  for (const [cls, n, label] of cells) {
+    const d = el("div", "tot " + cls);
+    d.append(el("div", "tot-n", String(n)), el("div", "tot-l", label));
+    host.append(d);
+  }
+}
+
+/* ---------- filtering ---------- */
+
+function itemVisible(it) {
+  switch (filter) {
+    case "flag":  return it.flagged;
+    case "other": return it.choice === "other";
+    case "low":   return it.confidence === "low" || it.confidence === "medium";
+    case "done":  return overrides.has(it.id);
+    default:      return true;
+  }
+}
+
+/* ---------- line rendering ---------- */
+
+function wordButton(it) {
+  const ov = overrides.get(it.id);
+  const reading = ov ? ov.reading : it.reading;
+  const shown = reading === "" ? "∅" : reading;
+  const b = el("button", `w w-${it.choice} w-${it.confidence}`, shown);
+  b.type = "button";
+  b.dataset.id = it.id;
+  if (ov) b.dataset.over = "1";
+  b.setAttribute("aria-expanded", openItem === it.id ? "true" : "false");
+  b.title = `${it.choice} · ${it.confidence} confidence`;
+  b.addEventListener("click", () => {
+    openItem = openItem === it.id ? null : it.id;
+    render();
+  });
+  return b;
+}
+
+function renderLine(block) {
+  const visible = block.items.filter(itemVisible);
+  if (!visible.length) return null;
+
+  const row = el("div", "line");
+  row.append(el("div", "line-no", String(block.line)));
+
+  const verse = el("div", "verse");
+
+  /* Rebuild the line with the adjudicated words as buttons, matching each
+     item to its word position. Items are keyed by word_index in the source
+     e-text line, so walk the original words and splice. */
+  const words = block.text.split(/\s+/).filter(Boolean);
+  const byIndex = new Map();
+  for (const it of block.items) {
+    if (!byIndex.has(it.word_index)) byIndex.set(it.word_index, []);
+    byIndex.get(it.word_index).push(it);
+  }
+
+  let first = true;
+  const push = (node) => {
+    if (!first) verse.append(document.createTextNode(" "));
+    verse.append(node);
+    first = false;
+  };
+
+  for (let i = 0; i < words.length; i++) {
+    const hits = byIndex.get(i);
+    if (!hits) { push(document.createTextNode(words[i])); continue; }
+    for (const it of hits) {
+      const ov = overrides.get(it.id);
+      const reading = ov ? ov.reading : it.reading;
+      if (reading === "" && !itemVisible(it)) continue;
+      const btn = wordButton(it);
+      if (!itemVisible(it)) btn.classList.add("w-dim");
+      push(btn);
+    }
+    byIndex.delete(i);
+  }
+  for (const [, hits] of [...byIndex].sort((a, b) => a[0] - b[0])) {
+    for (const it of hits) push(wordButton(it));
+  }
+
+  row.append(verse);
+
+  const open = block.items.find((it) => it.id === openItem);
+  if (open) row.append(renderPanel(open));
+
+  return row;
+}
+
+/* ---------- detail panel ---------- */
+
+function renderPanel(it) {
+  const ov = overrides.get(it.id);
+  const panel = el("div", "panel");
+
+  const head = el("div", "panel-head");
+  head.append(el("span", `tag tag-${it.choice}`, it.choice));
+  head.append(el("span", "tag tag-conf", it.confidence + " confidence"));
+  head.append(el("span", "item-id", `p.${it.page} · line ${it.line} · ${it.id}`));
+  panel.append(head);
+
+  const cands = el("div", "cands");
+  const addRow = (label, value, isFinal) => {
+    cands.append(el("div", "cand-k", label));
+    const v = el("div", "cand-v" + (isFinal ? " is-final" : ""));
+    if (value === "") v.append(el("span", "empty", "(no word here)"));
+    else v.textContent = value;
+    cands.append(v);
+  };
+  addRow("e-text", it.etext, false);
+  addRow("OCR", it.ocr, false);
+  addRow("final", ov ? ov.reading : it.reading, true);
+  panel.append(cands);
+
+  if (it.note) panel.append(el("div", "note", it.note));
+
+  const acts = el("div", "acts");
+  const mk = (label, onClick, pressed) => {
+    const b = el("button", "act", label);
+    b.type = "button";
+    if (pressed) b.setAttribute("aria-pressed", "true");
+    b.addEventListener("click", onClick);
+    return b;
+  };
+
+  acts.append(mk("Keep verdict", () => { overrides.delete(it.id); render(); }, !ov));
+  if (it.etext !== it.reading)
+    acts.append(mk("Use e-text", () => setOverride(it, it.etext, "etext")));
+  if (it.ocr !== it.reading)
+    acts.append(mk("Use OCR", () => setOverride(it, it.ocr, "ocr")));
+
+  const amendBtn = mk("Amend…", () => {
+    const box = panel.querySelector(".amend");
+    box.hidden = !box.hidden;
+    if (!box.hidden) box.querySelector("input").focus();
+  });
+  amendBtn.classList.add("act-amend");
+  acts.append(amendBtn);
+  panel.append(acts);
+
+  const amend = el("div", "amend");
+  amend.hidden = !(ov && ov.choice === "other");
+  const input = document.createElement("input");
+  input.type = "text";
+  input.id = `amend-${it.id}`;
+  input.value = ov ? ov.reading : it.reading;
+  input.setAttribute("aria-label", "Corrected reading");
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { setOverride(it, input.value, "other"); }
+  });
+  const save = el("button", "act", "Save");
+  save.type = "button";
+  save.addEventListener("click", () => setOverride(it, input.value, "other"));
+  amend.append(input, save);
+  panel.append(amend);
+
+  return panel;
+}
+
+function setOverride(it, reading, choice) {
+  overrides.set(it.id, {
+    id: it.id, page: it.page, line: it.line,
+    reading, choice, was: it.reading,
+  });
+  render();
+}
+
+/* ---------- page ---------- */
+
+function render() {
+  const host = document.getElementById("body");
+  host.textContent = "";
+
+  let shown = 0;
+  let currentPage = null;
+  let pageWrap = null;
+  const pending = [];
+
+  for (const block of DATA.blocks) {
+    const row = renderLine(block);
+    if (!row) continue;
+    if (block.page !== currentPage) {
+      currentPage = block.page;
+      pending.push({ page: currentPage, rows: [] });
+    }
+    pending[pending.length - 1].rows.push(row);
+    shown += block.items.filter(itemVisible).length;
+  }
+
+  if (!pending.length) {
+    host.append(el("div", "empty-state", "Nothing matches this filter."));
+  }
+
+  for (const group of pending) {
+    const head = el("div", "page-head");
+    head.append(el("h2", null, `Page ${group.page}`));
+    const n = group.rows.length;
+    head.append(el("span", "n", `${n} line${n === 1 ? "" : "s"}`));
+    host.append(head);
+    for (const r of group.rows) host.append(r);
+  }
+
+  document.getElementById("count").textContent =
+    `${shown} of ${DATA.totals.items} items`;
+
+  const n = overrides.size;
+  document.getElementById("dock-n").textContent = String(n);
+  document.getElementById("dock-s").hidden = n === 1;
+  document.getElementById("dl").disabled = n === 0;
+}
+
+/* ---------- filters + download ---------- */
+
+const chips = {
+  all: document.getElementById("f-all"),
+  flag: document.getElementById("f-flag"),
+  other: document.getElementById("f-other"),
+  low: document.getElementById("f-low"),
+  done: document.getElementById("f-done"),
+};
+
+for (const [key, btn] of Object.entries(chips)) {
+  btn.addEventListener("click", () => {
+    filter = key;
+    for (const [k, b] of Object.entries(chips))
+      b.setAttribute("aria-pressed", k === key ? "true" : "false");
+    openItem = null;
+    render();
+  });
+}
+
+document.getElementById("dl").addEventListener("click", () => {
+  const payload = {
+    generated: new Date().toISOString(),
+    overrides: [...overrides.values()],
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2) + "\n"],
+    { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "reviews.json";
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && openItem) { openItem = null; render(); }
+});
+
+renderTotals();
+render();
+</script>
+
+</body>
+</html>

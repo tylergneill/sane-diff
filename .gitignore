@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+
+# Edition data: supplied per text, never carried in the repo.
+input/
+
+# The working directory is disposable: everything under work/ is
+# regenerable from the files in input/.
+work/
+
+# Generated outputs. All of these come back from the three input files by
+# re-running the pipeline, so the repo tracks the scripts, not their results.
+corrected.txt
+corrected.marked.txt
+report.tsv
+report.flagged.tsv
+report.json
+review.html
+
+# reviews.json is the exception in spirit — it holds human judgment and
+# cannot be regenerated — but it is per-edition data, so it lives beside
+# the edition it belongs to rather than here.
+reviews.json
+
+# Staging copies of the inputs at the repo root.
+/etext.txt
+/ocr.txt
+/source.pdf
