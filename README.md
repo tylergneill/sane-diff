@@ -1,151 +1,73 @@
 # OCR adjudication pipeline
 
-Adjudicates disagreements between a pre-existing Sanskrit e-text and OCR output,
-using the scanned page image of the printed edition as ground truth. The e-text
-is already good; OCR is a second opinion, not a replacement. For each point where
-the two disagree, a vision-capable agent decides what the printed page says.
+Adjudicates disagreements between a Sanskrit e-text and OCR of the same printed
+edition, using the scanned page as ground truth. Design and rationale:
+`ocr-adjudication-spec.md`.
 
-See `ocr-adjudication-spec.md` for the design and its rationale.
+## Setup
 
-## Inputs
+Put in `input/`:
 
-Three required files in `input/`, plus one optional:
-
-| file | what it is |
+| file | |
 |---|---|
-| `etext.txt` | the pre-existing e-text, one line per printed line, page-aligned |
-| `ocr.txt` | OCR output from the same edition, same line and page alignment |
-| `source.pdf` | the scanned printed edition |
-| `notes.md` | **optional** — an expert reader's account of the two texts |
+| `etext.txt` | the e-text, one line per printed line, page-aligned |
+| `ocr.txt` | OCR of the same edition, same alignment |
+| `source.pdf` | the scan |
+| `notes.md` | optional; passed to every sub-agent |
 
-Line numbers and page boundaries are assumed accurate and consistent across all
-three. The pipeline does not re-derive alignment; every location reference is a
-page number plus a line number.
+Page markers are lines reading `<p.12>`. For a different format pass
+`--marker` a regex whose first capture group is the page number.
 
-`notes.md` is always optional. When absent the sub-agent decides everything from
-the page image on its own; when present its contents go into each sub-agent
-prompt and the agent respects it. Use it for what an agent cannot derive from a
-single page: what the editorial markup means, whether ellipsis length carries
-information, how the apparatus is delimited, which OCR artifacts are known.
-Where the note and the page disagree, the page wins and the item is flagged.
+Install `mupdf-tools` (or `poppler` plus ImageMagick). Nothing else to install.
 
-Both texts are split on page markers. The default marker is a line reading
-`<p.12>`; use `--marker` to pass a different regex whose first capture group is
-the page number.
-
-## Running it
+## Run
 
 ```sh
-# Stage one — deterministic, no model.
-python3 scripts/prep.py
+python3 scripts/prep.py                 # or --pages 1-9 to limit
+python3 scripts/pending.py              # pages awaiting adjudication
+```
 
-# Just the trial pages:
-python3 scripts/prep.py --pages 12-21
+Then fan out to sub-agents — see `agents/dispatcher.md`. Each writes a
+`verdicts.json` into its page directory.
 
-# Stage two — fan out to sub-agents. See agents/dispatcher.md.
-python3 scripts/pending.py          # what still needs adjudicating
-
-# Stage three — apply every verdict to the e-text.
+```sh
 python3 scripts/apply.py
-
-# Stage four — the readout that explains it.
 python3 scripts/report.py
 ```
 
-`prep.py` renders each page that has diffs to a 300 DPI grayscale `page.png` and
-writes its `diffs.json`. Pages where the two texts agree completely get no
-directory and are skipped — on a clean edition that is most of the book, and it
-is the main reason the run stays cheap.
+Both write into `output/`.
 
-Rendering uses `mutool` when present, otherwise `pdftoppm` plus ImageMagick.
-Install `mupdf-tools` or `poppler`. The scripts are otherwise stdlib-only.
+To redo a page, delete its `work/pages/NNNN/verdicts.json` and re-run from
+`pending.py`. An interrupted run resumes where it stopped.
 
-## Output
+## Review
 
-Everything the pipeline generates lands in `output/`.
+```sh
+meld input/etext.txt output/corrected.txt
+```
 
-`output/corrected.txt` is the deliverable: the e-text with every verdict applied,
-same page markers and line structure, so `diff input/etext.txt
-output/corrected.txt` shows only real changes.
+Use `output/corrected.marked.txt` instead to see each change with its verdict:
 
-Every verdict is applied regardless of confidence. A half-applied text is a third
-artifact that has to be reconciled by hand, which is the work this avoids.
-Confidence governs how a change is *marked*, not whether it is made.
-
-`output/corrected.marked.txt` is the same text with each change annotated:
-
-| mark | meaning |
+| mark | |
 |---|---|
 | *(none)* | e-text kept, high confidence |
 | `{+}` | OCR adopted |
 | `{!}` | agent override — neither candidate |
-| `{~}` `{?}` | medium / low confidence, combined with the above (`{+~}`, `{!?}`) |
+| `{~}` `{?}` | medium / low confidence, combined (`{+~}`, `{!?}`) |
 
-`output/report.tsv` holds one row per item: page, line, item id, e-text reading, OCR
-reading, final reading, choice, confidence, note. Sorted by page then line.
-Tab-separated, since Devanagari text and transliteration both tend to contain
-commas. `output/report.json` carries the same rows plus run totals.
+Start with `output/report.flagged.tsv` — agent overrides and low-confidence
+readings, the rows needing eyes. `output/report.tsv` has every item with its
+note; `output/report.json` the same plus totals.
 
-`output/report.flagged.tsv` holds only the rows needing human eyes:
+Keep the PDF open in its own viewer; the reports cite page and line.
 
-- `choice` is `other` — the agent overrode both candidates
-- `confidence` is `low`
+To reject a verdict, edit that page's `verdicts.json` and re-run `apply.py`.
 
-Everything else stays silent. The flagged view keeps the review pass short; the
-full file remains the audit trail.
+## Caveats
 
-## Reviewing
+Verdicts are keyed to item ids that renumber whenever `prep.py` changes how
+items are cut. Stale verdicts then apply to the wrong item silently. After any
+such change, delete every `verdicts.json` and re-adjudicate.
 
-Review in a diff viewer. `diff input/etext.txt output/corrected.txt` shows only
-real changes, and a viewer such as Meld highlights the differing characters
-within each line, which is the part worth looking at — most disagreements turn
-out to be a single space or vowel sign inside an otherwise identical word.
-
-Diff against `output/corrected.marked.txt` instead to see the same changes with
-the agent's verdict attached to each one, and keep `output/report.tsv` alongside
-for the choice, confidence and note behind any given item.
-`output/report.flagged.tsv` is the short list: agent overrides and
-low-confidence readings.
-
-Review is by exception. Every verdict is already applied, so the question is
-which to reject, not which to approve. To correct one, edit that page's
-`work/pages/NNNN/verdicts.json` and re-run `apply.py`.
-
-Keep the PDF open in its own viewer — the report cites page and line for every
-item and deliberately does not duplicate the page images.
-
-## Layout
-
-```
-input/     etext.txt, ocr.txt, source.pdf, notes.md (optional)
-scripts/   prep.py, pending.py, apply.py, report.py
-agents/    dispatcher.md, adjudicator.md
-work/      pages/NNNN/{page.png, diffs.json, verdicts.json}  — disposable
-output/    corrected.txt, corrected.marked.txt
-           report.tsv, report.flagged.tsv, report.json
-```
-
-Everything in `work/` and `output/` is regenerable from the three input files, so
-both stay out of version control.
-
-## Resumability
-
-A page either has a `verdicts.json` or it does not. Interrupt a run and start it
-again; finished pages drop off the pending list on their own. Sub-agents share no
-state, so pages can be redone individually by deleting just that page's
-`verdicts.json`.
-
-## The trial
-
-Start with ten pages chosen because the e-text is known to be imperfect there, so
-the diff list is substantial rather than empty. Hand-check every verdict on the
-first two pages.
-
-The question is not only whether the verdicts are correct, but whether the
-confidence scores track accuracy. If high-confidence verdicts are reliably right,
-the rest of a long run can be reviewed by flag alone and the approach scales. If
-confidence is uncorrelated with correctness, the readout is not trustworthy at
-scale, and cropping becomes necessary after all.
-
-That is the real question the trial answers: not whether the agent can read
-Devanagari, but whether it knows when it cannot.
+Every verdict is applied regardless of confidence; confidence controls the mark
+only.
