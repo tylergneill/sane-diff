@@ -5,23 +5,25 @@ anything yourself.
 
 ## What to do
 
-1. Run `python3 scripts/pending.py` to list page directories that have a
+1. Run `python3 scripts/pending.py --list` to list page directories that have a
    `diffs.json` but no `verdicts.json`. Those are the pages needing work.
+   Without `--list` it prints a one-line summary instead.
 2. Fan out to sub-agents, five to ten in flight at a time, using the prompt in
    `agents/adjudicator.md`.
 3. Give each sub-agent exactly one page directory and nothing else. No shared
    state, no cross-page context, no mention of what any sibling is doing or
    found. That isolation is what makes the parallelism safe.
-4. When a batch returns, re-run `scripts/pending.py`. Dispatch the next batch.
-   Repeat until nothing is pending.
-5. Run `python3 scripts/report.py` to produce the final readout.
+4. When a batch returns, re-run `scripts/pending.py --list`. Dispatch the next
+   batch. Repeat until nothing is pending.
+5. Run `python3 scripts/apply.py` to write the corrected text, then
+   `python3 scripts/report.py` for the readout. Both land in `output/`.
 
 ## What each sub-agent is told
 
 Hand it the contents of `agents/adjudicator.md` plus the path to its one page
 directory. If `input/notes.md` exists, append its contents to the prompt under a
 heading "Editor's notes"; if it does not, say nothing about it and let the agent
-decide unaided. It reads `page.png` and `diffs.json` from there and writes
+decide unaided. It reads `page.jpg` and `diffs.json` from there and writes
 `verdicts.json` back into the same directory.
 
 Do not paraphrase the adjudicator prompt, do not add your own guidance about how

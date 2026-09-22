@@ -33,7 +33,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--work", default="tmp/pages", type=Path)
-    ap.add_argument("--count", action="store_true", help="print only the number pending")
+    ap.add_argument("--list", action="store_true",
+                    help="one line per pending page; what the dispatcher reads")
     args = ap.parse_args()
 
     if not args.work.is_dir():
@@ -41,13 +42,15 @@ def main():
         sys.exit(1)
 
     pending = pending_pages(args.work)
-    if args.count:
-        print(len(pending))
+    if args.list:
+        for page_dir, count in pending:
+            print(f"{page_dir}\t{count} item(s)")
         return
-    for page_dir, count in pending:
-        print(f"{page_dir}\t{count} item(s)")
     if not pending:
-        print("all pages adjudicated", file=sys.stderr)
+        print("all pages adjudicated")
+        return
+    items = sum(c for _, c in pending if c >= 0)
+    print(f"{len(pending)} page(s) pending, {items} item(s)")
 
 
 if __name__ == "__main__":
