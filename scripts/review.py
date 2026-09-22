@@ -1,20 +1,32 @@
 #!/usr/bin/env python3
-"""Walk the agent's overrides one page at a time, next to the scan.
+"""Walk the questionable verdicts one page at a time, next to the scan.
 
-An `other` verdict is the only one that can put a reading into the output that
-neither source contains, so it is the one that needs human eyes. Reads
-output/report.tsv and shows those overrides grouped by page, so the page image
-only has to be opened once per group. With --open it also opens each scan.
+Reads output/report.tsv and groups the selected items by page, opening each
+page scan as it goes so the print can be checked against the reading.
 
-By default only low-confidence overrides are shown. Use --include-medium to add
-the medium ones, or --medium-only to see just those. An override is never high
-confidence, so there is no band above medium.
+Three modes, narrowest first:
+
+  --overrides   `other` verdicts: the only ones that can put a reading into
+                the output that neither source contains. In practice these
+                are all medium, since the adjudicator prompt caps an override
+                there, but a low one is permitted and is included here too.
+  --low         every low-confidence verdict, whatever was chosen — the items
+                an agent said it could not settle.
+  --all         every low- and medium-confidence verdict (the default).
+
+High-confidence etext and ocr verdicts are never shown; with 86 of 100 items
+here, reviewing them is reviewing the whole run.
+
+--summary does something else entirely: instead of walking items it prints a
+source-by-confidence table of every verdict, high ones included, and exits.
+Both it and the walk respect --pages.
 """
 
 import argparse
 import csv
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 
 REPORT = Path("output/report.tsv")
@@ -42,6 +54,43 @@ def parse_pages(spec):
     return out
 
 
+CHOICES = ["etext", "ocr", "other"]
+CONFIDENCES = ["high", "medium", "low"]
+
+
+def table(headers, body):
+    """Render rows as a box-drawn table; every column after the first right-aligned."""
+    grid = [headers] + body
+    width = [max(len(r[i]) for r in grid) for i in range(len(headers))]
+
+    def rule(left, mid, right):
+        return left + mid.join("─" * (w + 2) for w in width) + right
+
+    def line(cells):
+        out = [f" {cells[0]:<{width[0]}} "]
+        out += [f" {c:>{width[i]}} " for i, c in enumerate(cells[1:], 1)]
+        return "│" + "│".join(out) + "│"
+
+    print(rule("┌", "┬", "┐"))
+    print(line(headers))
+    for cells in body:
+        print(rule("├", "┼", "┤"))
+        print(line(cells))
+    print(rule("└", "┴", "┘"))
+
+
+def summary(counts):
+    """Cross-tabulate the adjudicated items by chosen source and confidence."""
+    body = []
+    for choice in CHOICES + ["total"]:
+        if choice == "total":
+            cells = [sum(counts[(c, f)] for c in CHOICES) for f in CONFIDENCES]
+        else:
+            cells = [counts[(choice, f)] for f in CONFIDENCES]
+        body.append([choice] + [str(n) for n in cells] + [str(sum(cells))])
+    table(["source"] + CONFIDENCES + ["total"], body)
+
+
 def clear():
     """Clear the screen, falling back to blank lines where that is not possible."""
     if subprocess.run(["clear"], check=False).returncode != 0:
@@ -63,45 +112,55 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--pages", help="restrict to these pages, e.g. 30 or 12-24,96")
-    ap.add_argument("--open", action="store_true",
-                    help="open each page scan with the system viewer")
     ap.add_argument("--no-clear", action="store_true",
                     help="print every page at once instead of clearing between them")
-    band = ap.add_mutually_exclusive_group()
-    band.add_argument("--include-medium", action="store_true",
-                      help="also show medium-confidence overrides")
-    band.add_argument("--medium-only", action="store_true",
-                      help="show only medium-confidence overrides")
+    ap.add_argument("--summary", action="store_true",
+                    help="print a source-by-confidence table of every verdict and exit")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--overrides", action="store_true",
+                      help="only `other` verdicts, at any confidence")
+    mode.add_argument("--low", action="store_true",
+                      help="only low-confidence verdicts, whatever was chosen")
+    mode.add_argument("--all", action="store_true",
+                      help="every low- and medium-confidence verdict (default)")
     args = ap.parse_args()
 
-    if args.medium_only:
-        want = {"medium"}
-    elif args.include_medium:
-        want = {"low", "medium"}
+    if args.overrides:
+        keep = lambda row: row["choice"] == "other"
+        label = "overrides"
+    elif args.low:
+        keep = lambda row: row["confidence"] == "low"
+        label = "low confidence"
     else:
-        want = {"low"}
+        keep = lambda row: row["confidence"] in {"low", "medium"}
+        label = "low+medium confidence"
 
     if not REPORT.exists():
         sys.exit(f"review.py: {REPORT} not found; run scripts/report.py first")
 
     only = parse_pages(args.pages)
+
+    if args.summary:
+        counts = Counter((r["choice"], r["confidence"]) for r in rows(REPORT, only))
+        summary(counts)
+        return
+
     grouped = {}
     for row in rows(REPORT, only):
-        if row["choice"] != "other" or row["confidence"] not in want:
+        if not keep(row):
             continue
         grouped.setdefault(int(row["page"]), []).append(row)
 
     if not grouped:
-        print("no overrides match")
+        print(f"no items match [{label}]")
         return
 
     total = sum(len(v) for v in grouped.values())
     pages = sorted(grouped)
     paging = not args.no_clear and sys.stdout.isatty() and len(pages) > 1
 
-    label = "+".join(sorted(want))
     if not paging:
-        print(f"{total} override(s) [{label} confidence] on {len(pages)} page(s)\n")
+        print(f"{total} item(s) [{label}] on {len(pages)} page(s)\n")
 
     for idx, page in enumerate(pages, 1):
         scan = PAGES / f"{page:04d}" / "page.jpg"
@@ -111,7 +170,7 @@ def main():
               f"{len(grouped[page])} of {total} items)  {scan} ===")
         for row in grouped[page]:
             show(row)
-        if args.open and scan.exists():
+        if scan.exists():
             subprocess.run(["open", str(scan)], check=False)
         if paging and idx < len(pages):
             try:

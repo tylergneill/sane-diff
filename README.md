@@ -44,6 +44,8 @@ Both write into `output/`.
 An interrupted run resumes where it stopped — `pending.py` lists whatever
 still lacks a `verdicts.json`.
 
+Then check the result with `scripts/review.py`, below.
+
 ## Starting over
 
 `tmp/` and `output/` are both regenerable from `input/`. Nothing else is.
@@ -79,9 +81,50 @@ Use `output/corrected.marked.txt` instead to see each change with its verdict:
 | `{!}` | agent override — neither candidate |
 | `{~}` `{?}` | medium / low confidence, combined (`{+~}`, `{!?}`) |
 
-Start with `output/report.flagged.tsv` — agent overrides and low-confidence
-readings, the rows needing eyes. `output/report.tsv` has every item with its
-note; `output/report.json` the same plus totals.
+To walk the questionable verdicts against the scan, use `review.py`. It groups
+them by page, prints the e-text, the OCR and the adjudicated reading with the
+agent's note, and opens each page image as it goes. On a tty it clears and
+pauses between pages; `--no-clear` prints them in one go instead, and `--pages`
+limits the walk (`--pages 12-24,96`).
+
+Three modes, narrowest first:
+
+| flag | shows |
+|---|---|
+| `--overrides` | `other` verdicts — the only ones that can put a reading into the output that neither source contains |
+| `--low` | every low-confidence verdict, whatever was chosen: what an agent said it could not settle |
+| `--all` | every low- and medium-confidence verdict *(default)* |
+
+```sh
+python3 scripts/review.py --overrides
+```
+
+High-confidence `etext` and `ocr` verdicts are never shown — they are the bulk
+of any run, and reviewing them is reviewing the whole text.
+
+`--summary` does something else: rather than walking items it cross-tabulates
+every verdict, high ones included, and exits.
+
+```
+$ python3 scripts/review.py --summary
+┌────────┬──────┬────────┬─────┬───────┐
+│ source │ high │ medium │ low │ total │
+├────────┼──────┼────────┼─────┼───────┤
+│ etext  │   61 │      6 │   3 │    70 │
+├────────┼──────┼────────┼─────┼───────┤
+│ ocr    │   25 │      2 │   1 │    28 │
+├────────┼──────┼────────┼─────┼───────┤
+│ other  │    0 │      2 │   0 │     2 │
+├────────┼──────┼────────┼─────┼───────┤
+│ total  │   86 │     10 │   4 │   100 │
+└────────┴──────┴────────┴─────┴───────┘
+```
+
+It respects `--pages`, so `--summary --pages 17-18` scores just those pages.
+
+The reports behind it: `output/report.flagged.tsv` is the overrides and
+low-confidence readings as a table, `output/report.tsv` every item with its
+note, `output/report.json` the same plus totals.
 
 Keep the PDF open in its own viewer; the reports cite page and line. The line
 number counts lines in the e-text, blank separator lines included, so it runs
