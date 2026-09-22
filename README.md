@@ -1,4 +1,4 @@
-# Claude text diff harmonizer
+# Claude Diff Adjudicator
 
 A workflow for using Claude to systematically adjudicate disagreements between two structured Sanskrit e-text files using its vision and natural language capabilities.
 
@@ -83,7 +83,10 @@ Start with `output/report.flagged.tsv` — agent overrides and low-confidence
 readings, the rows needing eyes. `output/report.tsv` has every item with its
 note; `output/report.json` the same plus totals.
 
-Keep the PDF open in its own viewer; the reports cite page and line.
+Keep the PDF open in its own viewer; the reports cite page and line. The line
+number counts lines in the e-text, blank separator lines included, so it runs
+ahead of the printed line count on the scan — use it to get near the right spot,
+then match on the text itself.
 
 To reject a verdict, edit that page's `verdicts.json` and re-run `apply.py`.
 

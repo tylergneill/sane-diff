@@ -45,7 +45,14 @@ def split_pages(text, marker, label):
 
     Line numbers are 1-based within each page and count every line of the
     page block, blank lines included, so that etext and ocr line numbers
-    refer to the same printed line.
+    refer to the same printed line. Keep it that way: the line alignment in
+    page_diffs depends on both texts being numbered the same, and skipping
+    blanks would desynchronize them.
+
+    Because the e-text is blank-line separated, these numbers run ahead of
+    the printed line count on the scan. They are not a page coordinate, and
+    an adjudicator reading the image should locate items by context rather
+    than by counting lines down the page.
     """
     pattern = re.compile(marker)
     pages = {}

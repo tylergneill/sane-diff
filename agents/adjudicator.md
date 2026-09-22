@@ -42,10 +42,20 @@ you otherwise would. The note is always optional and nothing depends on it.
 
 ## Locating an item
 
-Count lines in the main text block, starting at 1 for its first line. Ignore the
-running head, the page number, and the footnote apparatus — unless an item's line
-number falls within the apparatus, in which case count into it the same way.
-Use `context` and `word_index` to find the word within the line.
+`line` counts lines in the e-text source, not printed lines on the scan, and it
+counts blank spacer lines along with the rest. The e-text is blank-line separated,
+so its numbering runs ahead of what you count by eye on the page — often by a
+third or more. Do not expect `line` to match the printed line you arrive at by
+counting down the scan.
+
+So locate an item by its `context` and `word_index`: find the line of the page
+whose text matches `context`, then count words into it. `line` is a rough hint
+about how far down the page to look, and nothing more. Where the two disagree,
+`context` is right.
+
+Ignore the running head and the page number. An item whose `context` belongs to
+the footnote apparatus is located in the apparatus the same way, by matching its
+text.
 
 ## Report confidence honestly
 
