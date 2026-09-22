@@ -63,6 +63,10 @@ def load_page(page_dir, problems):
         if confidence not in CONFIDENCES:
             problems.append(f"{page_dir.name}: {vid} has unknown confidence {confidence!r}")
 
+        if choice == "other" and confidence == "high":
+            problems.append(f"{page_dir.name}: {vid} is 'other' at high confidence; "
+                            f"an override of both sources is never that certain")
+
         reading = verdict.get("reading")
         if reading is None:
             reading = item.get(choice, "") if choice in ("etext", "ocr") else ""

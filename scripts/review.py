@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Walk the flagged items one page at a time, next to the scan.
+"""Walk the agent's overrides one page at a time, next to the scan.
 
-Reads output/report.flagged.tsv and prints each flagged item grouped by page,
-so the page image only has to be opened once per group. With --open it also
-opens each page's scan as it goes.
+An `other` verdict is the only one that can put a reading into the output that
+neither source contains, so it is the one that needs human eyes. Reads
+output/report.tsv and shows those overrides grouped by page, so the page image
+only has to be opened once per group. With --open it also opens each scan.
+
+By default only low-confidence overrides are shown. Use --include-medium to add
+the medium ones, or --medium-only to see just those. An override is never high
+confidence, so there is no band above medium.
 """
 
 import argparse
@@ -12,7 +17,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-FLAGGED = Path("output/report.flagged.tsv")
+REPORT = Path("output/report.tsv")
 PAGES = Path("tmp/pages")
 
 
@@ -62,26 +67,41 @@ def main():
                     help="open each page scan with the system viewer")
     ap.add_argument("--no-clear", action="store_true",
                     help="print every page at once instead of clearing between them")
+    band = ap.add_mutually_exclusive_group()
+    band.add_argument("--include-medium", action="store_true",
+                      help="also show medium-confidence overrides")
+    band.add_argument("--medium-only", action="store_true",
+                      help="show only medium-confidence overrides")
     args = ap.parse_args()
 
-    if not FLAGGED.exists():
-        sys.exit(f"review.py: {FLAGGED} not found; run scripts/report.py first")
+    if args.medium_only:
+        want = {"medium"}
+    elif args.include_medium:
+        want = {"low", "medium"}
+    else:
+        want = {"low"}
+
+    if not REPORT.exists():
+        sys.exit(f"review.py: {REPORT} not found; run scripts/report.py first")
 
     only = parse_pages(args.pages)
     grouped = {}
-    for row in rows(FLAGGED, only):
+    for row in rows(REPORT, only):
+        if row["choice"] != "other" or row["confidence"] not in want:
+            continue
         grouped.setdefault(int(row["page"]), []).append(row)
 
     if not grouped:
-        print("no flagged items match")
+        print("no overrides match")
         return
 
     total = sum(len(v) for v in grouped.values())
     pages = sorted(grouped)
     paging = not args.no_clear and sys.stdout.isatty() and len(pages) > 1
 
+    label = "+".join(sorted(want))
     if not paging:
-        print(f"{total} flagged item(s) on {len(pages)} page(s)\n")
+        print(f"{total} override(s) [{label} confidence] on {len(pages)} page(s)\n")
 
     for idx, page in enumerate(pages, 1):
         scan = PAGES / f"{page:04d}" / "page.jpg"

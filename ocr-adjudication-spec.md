@@ -133,14 +133,28 @@ No page images side by side. The reviewer is expected to have the PDF open in it
 
 The prompt in `agents/adjudicator.md` should establish, in roughly this order:
 
-- The page image is the sole authority. The e-text and the OCR are candidate readings and nothing more; neither has priority over the other.
+- What the page is, and what the agent is. The page image is what the edition
+  says, but the agent reading it is doing OCR on a compressed scan, as the OCR
+  source did. It should read independently of the OCR string rather than
+  reasoning backwards from its spelling. The e-text is the default, having been
+  made by a human working from the book itself; departing from it needs grounds,
+  and landing on a reading neither source contains needs stronger ones still.
 - Adjudicate only the listed items. Do not correct anything else on the page, and do not comment on readings that were not disputed.
-- Locate each item by its line number, counting lines in the main text block. Ignore running heads, page numbers, and the footnote apparatus unless an item's line number falls there.
+- Locate each item by its `context` and `word_index`. The `line` field counts
+  e-text lines including blank separators, so it runs ahead of the printed line
+  count and is a hint about where to look, not a page coordinate. Ignore running
+  heads and page numbers.
 - Report confidence honestly. Low confidence on a smudged or broken impression is a useful signal and costs nothing; false confidence is the expensive failure.
 - Respect `notes.md` when it is present, and decide unaided when it is not. Where the note and the page disagree, the page wins and the item is flagged.
 - Return only the specified JSON structure, with no commentary outside it.
 
-The main failure mode to guard against is scope creep: an agent handed a full page image is inclined to start correcting things it was not asked about. Constrain it to the item list explicitly and repeat that constraint near the end of the prompt.
+Two failure modes to guard against. Scope creep: an agent handed a full page
+image is inclined to start correcting things it was not asked about, so
+constrain it to the item list explicitly and repeat that constraint near the
+end of the prompt. And novel error: an agent that overrides both sources can
+put a reading into the output that no human ever wrote, which costs more trust
+than reproducing an error the e-text already had. Hold `other` to a higher bar
+than the choice between the two candidates.
 
 ## Trial run
 
