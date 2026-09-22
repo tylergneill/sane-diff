@@ -11,8 +11,8 @@ confident changes applied is neither the original nor the corrected version,
 and reconciling it by hand is the work this pipeline exists to avoid.
 Confidence governs how a change is marked, not whether it is made.
 
-Human overrides in reviews.json, when present, take precedence over the
-agent's verdict for the items they name.
+Corrections are made by editing a page's verdicts.json and re-running this
+script; diff the output against input/etext.txt in a diff viewer to review.
 """
 
 import argparse
@@ -75,12 +75,8 @@ def split_pages_with_markers(text, marker):
     return blocks
 
 
-def load_verdicts(work, overrides):
-    """Return {(page, line): [item dicts]} joined with their verdicts.
-
-    An override replaces the verdict's reading and records that a human
-    made the call, so the marked file and the report can say so.
-    """
+def load_verdicts(work):
+    """Return {(page, line): [item dicts]} joined with their verdicts."""
     by_line = {}
     problems = []
     for page_dir in sorted(p for p in work.iterdir() if p.is_dir()):
@@ -103,19 +99,15 @@ def load_verdicts(work, overrides):
             reading = v.get("reading")
             if reading is None:
                 reading = item.get(choice, "") if choice in ("etext", "ocr") else ""
-            override = overrides.get(v["id"])
-            if override is not None:
-                reading = override.get("reading", reading)
-                choice = override.get("choice", choice)
             by_line.setdefault((item["page"], item["line"]), []).append({
                 "id": v["id"],
                 "word_index": item["word_index"],
+                "word_span": item.get("word_span", 1),
                 "etext": item.get("etext", ""),
                 "ocr": item.get("ocr", ""),
                 "reading": reading,
                 "choice": choice,
                 "confidence": v.get("confidence", ""),
-                "overridden": override is not None,
             })
     return by_line, problems
 
@@ -127,6 +119,10 @@ def rebuild_line(line, items, marked):
     appears twice on a line is not changed in the wrong place. Items are keyed
     by word_index; several may share an index when OCR merged tokens, in which
     case they are applied in id order and empty readings drop the word.
+
+    An item's word_span says how many e-text words it replaces: a spacing
+    item covering `tvak cakṣuṣī` has span 2, so the second word is consumed
+    by the item rather than emitted again on its own.
     """
     words = line.split()
     # Group by index: a merge puts the joined token at one index and leaves
@@ -136,19 +132,22 @@ def rebuild_line(line, items, marked):
         by_index.setdefault(it["word_index"], []).append(it)
 
     out = []
+    absorbed = 0
     for idx, word in enumerate(words):
         hits = by_index.pop(idx, None)
         if not hits:
+            if absorbed > 0:
+                absorbed -= 1  # consumed by a preceding multi-word item
+                continue
             out.append(word)
             continue
+        absorbed = max((h.get("word_span", 1) for h in hits), default=1) - 1
         for hit in hits:
             reading = hit["reading"]
             if reading == "":
                 continue  # the word is absorbed into a neighbouring token
             if marked:
                 mark = MARKS.get((hit["choice"], hit["confidence"]), "?")
-                if hit["overridden"]:
-                    mark = "*"
                 out.append(f"{reading}{{{mark}}}" if mark else reading)
             else:
                 out.append(reading)
@@ -160,8 +159,6 @@ def rebuild_line(line, items, marked):
                 continue
             if marked:
                 mark = MARKS.get((hit["choice"], hit["confidence"]), "?")
-                if hit["overridden"]:
-                    mark = "*"
                 out.append(f"{hit['reading']}{{{mark}}}" if mark else hit["reading"])
             else:
                 out.append(hit["reading"])
@@ -178,11 +175,9 @@ def main():
     ap.add_argument("--input", default="input", type=Path)
     ap.add_argument("--work", default="work/pages", type=Path)
     ap.add_argument("--marker", default=r"^\s*<p\.(\d+)>\s*$")
-    ap.add_argument("--out", default="corrected.txt", type=Path)
+    ap.add_argument("--out", default="output/corrected.txt", type=Path)
     ap.add_argument("--marked-out", default=None, type=Path,
                     help="default: alongside --out, named <stem>.marked<suffix>")
-    ap.add_argument("--reviews", default="reviews.json", type=Path,
-                    help="human overrides; used when the file exists")
     args = ap.parse_args()
 
     etext_path = args.input / "etext.txt"
@@ -193,12 +188,7 @@ def main():
 
     marked_out = args.marked_out or args.out.with_suffix(f".marked{args.out.suffix}")
 
-    overrides = {}
-    if args.reviews.exists():
-        data = json.loads(args.reviews.read_text(encoding="utf-8"))
-        overrides = {o["id"]: o for o in data.get("overrides", [])}
-
-    by_line, problems = load_verdicts(args.work, overrides)
+    by_line, problems = load_verdicts(args.work)
     if not by_line:
         die("no verdicts found; run the adjudication stage first")
 
@@ -224,14 +214,11 @@ def main():
             mark_out.append(rebuild_line(line, items, marked=True))
             applied += len(items)
 
+    args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text("\n".join(clean_out) + "\n", encoding="utf-8")
     marked_out.write_text("\n".join(mark_out) + "\n", encoding="utf-8")
 
-    n_override = sum(1 for v in overrides if any(
-        it["id"] == v for items in by_line.values() for it in items))
     print(f"verdicts applied: {applied}")
-    if overrides:
-        print(f"human overrides:  {n_override}")
     print(f"pages touched:    {len(adjudicated_pages)}")
     print(f"wrote {args.out} and {marked_out}")
 

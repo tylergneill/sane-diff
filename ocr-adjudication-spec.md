@@ -40,7 +40,6 @@ repo/
     pending.py       lists pages still awaiting adjudication
     apply.py         writes the corrected text from the verdicts
     report.py        merges verdicts into the readout
-    review.py        builds the review interface
   agents/
     dispatcher.md    fan-out prompt
     adjudicator.md   sub-agent prompt
@@ -51,15 +50,13 @@ repo/
       verdicts.json  (written by the sub-agent)
     0002/
     ...
-  corrected.txt          the deliverable
-  corrected.marked.txt   same text, changes marked for reading
-  report.tsv             readout
-  report.json            same rows, machine-readable
-  review.html            the review interface
-  reviews.json           human overrides, written by the interface
+  output/corrected.txt          the deliverable
+  output/corrected.marked.txt   same text, changes marked for reading
+  output/report.tsv             readout
+  output/report.json            same rows, machine-readable
 ```
 
-The working directory is disposable. Everything in `work/` is regenerable from the three input files, so it stays out of version control; `input/`, `scripts/`, `agents/` and the emitted deliverables are tracked. `reviews.json` is tracked too — it is the one artifact holding human judgment and cannot be regenerated.
+The working directory is disposable. Everything in `work/` is regenerable from the three input files, so it stays out of version control; `input/`, `scripts/`, `agents/` and the emitted deliverables are tracked.
 
 ## Stage one — prep.py
 
@@ -126,7 +123,7 @@ A single self-contained page, opened in a browser, rendering the corrected text 
 
 Review is by exception. Every verdict is already applied, so the interface exists to *reject or amend*, not to approve one item at a time — defaulting to approval is what the confidence scoring was for. Clicking a marked word shows the three candidates, the choice, the confidence and the note, and offers: keep the verdict, revert to the e-text, revert to the OCR, or type a different reading.
 
-Decisions persist to `reviews.json`, a separate artifact recording human overrides. The corrected text can then be regenerated with those overrides applied, and the review survives a re-run of any earlier stage. Without that, the interface is a viewer rather than a tool.
+Review happens in an ordinary diff viewer: `output/corrected.txt` and `output/corrected.marked.txt` diff against the input e-text, and `output/report.tsv` supplies the choice, confidence and note behind each item. A purpose-built interface was tried and dropped — it re-implemented intra-line diff highlighting that existing tools already do better. A verdict is corrected by editing the page's `verdicts.json` and re-running `apply.py`, which keeps every stage regenerable from the inputs plus the verdicts.
 
 No page images side by side. The reviewer is expected to have the PDF open in its own viewer; duplicating four hundred page images into the browser buys little and costs a great deal.
 

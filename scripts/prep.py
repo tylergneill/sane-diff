@@ -56,9 +56,15 @@ def split_pages(text, marker, label):
 def word_diffs(etext_line, ocr_line):
     """Word-level disagreements within a pair of lines.
 
-    Returns a list of (word_index, etext_reading, ocr_reading) where
-    word_index is the index into the e-text line's words (or the insertion
-    point, for words the e-text lacks). Empty string means "absent here".
+    Returns a list of (word_index, word_span, etext_reading, ocr_reading)
+    where word_index is the index into the e-text line's words (or the
+    insertion point, for words the e-text lacks) and word_span is how many
+    e-text words the item covers. Empty string means "absent here".
+
+    A run whose two sides differ only in whitespace — `tvak cakṣuṣī` against
+    `tvakcakṣuṣī` — is one question about the printed page, not one question
+    per token, so it is emitted as a single item spanning both words rather
+    than as a pair in which one half has no OCR reading at all.
     """
     ewords = etext_line.split()
     owords = ocr_line.split()
@@ -68,18 +74,23 @@ def word_diffs(etext_line, ocr_line):
         if tag == "equal":
             continue
         if tag == "replace":
+            if "".join(ewords[i1:i2]) == "".join(owords[j1:j2]):
+                # Same characters, different spacing: one item for the run.
+                out.append((i1, i2 - i1, " ".join(ewords[i1:i2]),
+                            " ".join(owords[j1:j2])))
+                continue
             # Pair them up positionally; the leftovers are adds or drops.
             span = max(i2 - i1, j2 - j1)
             for k in range(span):
                 e = ewords[i1 + k] if i1 + k < i2 else ""
                 o = owords[j1 + k] if j1 + k < j2 else ""
-                out.append((min(i1 + k, i2 - 1 if i2 > i1 else i1), e, o))
+                out.append((min(i1 + k, i2 - 1 if i2 > i1 else i1), 1, e, o))
         elif tag == "delete":
             for k in range(i1, i2):
-                out.append((k, ewords[k], ""))
+                out.append((k, 1, ewords[k], ""))
         elif tag == "insert":
             for k in range(j1, j2):
-                out.append((i1, "", owords[k]))
+                out.append((i1, 0, "", owords[k]))
     return out
 
 
@@ -97,13 +108,14 @@ def page_diffs(page_no, elines, olines):
             lineno = (i1 + k if i1 + k < i2 else i2 - 1 if i2 > i1 else i1) + 1
             if eline.strip() == oline.strip():
                 continue
-            for widx, eword, oword in word_diffs(eline, oline):
+            for widx, wspan, eword, oword in word_diffs(eline, oline):
                 items.append(
                     {
                         "id": f"p{page_no:04d}-{len(items) + 1:03d}",
                         "page": page_no,
                         "line": lineno,
                         "word_index": widx,
+                        "word_span": wspan,
                         "etext": eword,
                         "ocr": oword,
                         "context": eline if eline else oline,

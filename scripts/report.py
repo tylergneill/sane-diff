@@ -90,7 +90,7 @@ def load_page(page_dir, problems):
 
 
 def flagged(row):
-    """Rows needing human eyes: an override, or an admitted weak reading."""
+    """Rows needing human eyes: an agent override, or a weak reading."""
     return row["choice"] == "other" or row["confidence"] == "low"
 
 
@@ -105,13 +105,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--work", default="work/pages", type=Path)
-    ap.add_argument("--out", default="report.tsv", type=Path)
+    ap.add_argument("--out", default="output/report.tsv", type=Path)
     ap.add_argument("--flagged-out", default=None, type=Path,
                     help="default: alongside --out, named <stem>.flagged.tsv")
     ap.add_argument("--json-out", default=None, type=Path,
                     help="default: alongside --out, named <stem>.json")
-    ap.add_argument("--reviews", default="reviews.json", type=Path,
-                    help="human overrides; folded into the JSON when present")
     args = ap.parse_args()
 
     if not args.work.is_dir():
@@ -128,16 +126,12 @@ def main():
     rows.sort(key=lambda r: (r["page"], r["line"], r["id"]))
     flagged_rows = [r for r in rows if flagged(r)]
 
+    args.out.parent.mkdir(parents=True, exist_ok=True)
     write_tsv(args.out, rows)
     write_tsv(flagged_out, flagged_rows)
 
-    overrides = {}
-    if args.reviews.exists():
-        data = json.loads(args.reviews.read_text(encoding="utf-8"))
-        overrides = {o["id"]: o for o in data.get("overrides", [])}
     for row in rows:
         row["flagged"] = flagged(row)
-        row["overridden"] = row["id"] in overrides
 
     by_choice = {c: sum(1 for r in rows if r["choice"] == c) for c in CHOICES}
     by_confidence = {c: sum(1 for r in rows if r["confidence"] == c) for c in CONFIDENCES}
@@ -153,7 +147,6 @@ def main():
             "by_choice": by_choice,
             "by_confidence": by_confidence,
             "flagged": len(flagged_rows),
-            "overridden": sum(1 for r in rows if r["overridden"]),
         },
         "items": rows,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

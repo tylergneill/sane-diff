@@ -50,9 +50,6 @@ python3 scripts/apply.py
 
 # Stage four — the readout that explains it.
 python3 scripts/report.py
-
-# Stage five — the review interface.
-python3 scripts/review.py
 ```
 
 `prep.py` renders each page that has diffs to a 300 DPI grayscale `page.png` and
@@ -65,15 +62,17 @@ Install `mupdf-tools` or `poppler`. The scripts are otherwise stdlib-only.
 
 ## Output
 
-`corrected.txt` is the deliverable: the e-text with every verdict applied, same
-page markers and line structure, so `diff input/etext.txt corrected.txt` shows
-only real changes.
+Everything the pipeline generates lands in `output/`.
+
+`output/corrected.txt` is the deliverable: the e-text with every verdict applied,
+same page markers and line structure, so `diff input/etext.txt
+output/corrected.txt` shows only real changes.
 
 Every verdict is applied regardless of confidence. A half-applied text is a third
 artifact that has to be reconciled by hand, which is the work this avoids.
 Confidence governs how a change is *marked*, not whether it is made.
 
-`corrected.marked.txt` is the same text with each change annotated:
+`output/corrected.marked.txt` is the same text with each change annotated:
 
 | mark | meaning |
 |---|---|
@@ -81,14 +80,13 @@ Confidence governs how a change is *marked*, not whether it is made.
 | `{+}` | OCR adopted |
 | `{!}` | agent override — neither candidate |
 | `{~}` `{?}` | medium / low confidence, combined with the above (`{+~}`, `{!?}`) |
-| `{*}` | a human override from `reviews.json` |
 
-`report.tsv` holds one row per item: page, line, item id, e-text reading, OCR
+`output/report.tsv` holds one row per item: page, line, item id, e-text reading, OCR
 reading, final reading, choice, confidence, note. Sorted by page then line.
 Tab-separated, since Devanagari text and transliteration both tend to contain
-commas. `report.json` carries the same rows plus run totals for the interface.
+commas. `output/report.json` carries the same rows plus run totals.
 
-`report.flagged.tsv` holds only the rows needing human eyes:
+`output/report.flagged.tsv` holds only the rows needing human eyes:
 
 - `choice` is `other` — the agent overrode both candidates
 - `confidence` is `low`
@@ -98,37 +96,37 @@ full file remains the audit trail.
 
 ## Reviewing
 
-`review.html` is self-contained — open it in a browser, no server needed. It
-shows each changed line with the adjudicated words marked by choice and
-confidence; clicking one shows both candidates, the final reading, and the
-agent's note.
+Review in a diff viewer. `diff input/etext.txt output/corrected.txt` shows only
+real changes, and a viewer such as Meld highlights the differing characters
+within each line, which is the part worth looking at — most disagreements turn
+out to be a single space or vowel sign inside an otherwise identical word.
 
-Review is by exception. Everything is already applied, so the interface exists to
-reject or amend, not to approve item by item. Filter to flagged, overrides, or
-low/medium to keep the pass short.
+Diff against `output/corrected.marked.txt` instead to see the same changes with
+the agent's verdict attached to each one, and keep `output/report.tsv` alongside
+for the choice, confidence and note behind any given item.
+`output/report.flagged.tsv` is the short list: agent overrides and
+low-confidence readings.
 
-Decisions download as `reviews.json`. Save it next to `corrected.txt` and re-run
-`apply.py`; human overrides take precedence over the agent's verdicts and are
-marked `{*}`. It is the one artifact holding human judgment and cannot be
-regenerated, so it is tracked.
+Review is by exception. Every verdict is already applied, so the question is
+which to reject, not which to approve. To correct one, edit that page's
+`work/pages/NNNN/verdicts.json` and re-run `apply.py`.
 
-Keep the PDF open in its own viewer — the interface cites page and line for every
+Keep the PDF open in its own viewer — the report cites page and line for every
 item and deliberately does not duplicate the page images.
 
 ## Layout
 
 ```
 input/     etext.txt, ocr.txt, source.pdf, notes.md (optional)
-scripts/   prep.py, pending.py, apply.py, report.py, review.py
+scripts/   prep.py, pending.py, apply.py, report.py
 agents/    dispatcher.md, adjudicator.md
 work/      pages/NNNN/{page.png, diffs.json, verdicts.json}  — disposable
-corrected.txt, corrected.marked.txt
-report.tsv, report.flagged.tsv, report.json
-review.html, reviews.json
+output/    corrected.txt, corrected.marked.txt
+           report.tsv, report.flagged.tsv, report.json
 ```
 
-Everything in `work/` is regenerable from the three input files, so it stays out
-of version control.
+Everything in `work/` and `output/` is regenerable from the three input files, so
+both stay out of version control.
 
 ## Resumability
 
