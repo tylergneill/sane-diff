@@ -122,7 +122,9 @@ def rebuild_line(line, items, marked):
 
     An item's word_span says how many e-text words it replaces: a spacing
     item covering `tvak cakṣuṣī` has span 2, so the second word is consumed
-    by the item rather than emitted again on its own.
+    by the item rather than emitted again on its own. A span of 0 is an
+    insertion before the word at word_index (a word only the OCR has); it
+    replaces nothing, so that e-text word is still emitted after it.
     """
     words = line.split()
     # Group by index: a merge puts the joined token at one index and leaves
@@ -130,6 +132,16 @@ def rebuild_line(line, items, marked):
     by_index = {}
     for it in sorted(items, key=lambda i: i["id"]):
         by_index.setdefault(it["word_index"], []).append(it)
+
+    def emit(hit):
+        reading = hit["reading"]
+        if reading == "":
+            return  # the word is absorbed into a neighbouring token
+        if marked:
+            mark = MARKS.get((hit["choice"], hit["confidence"]), "?")
+            out.append(f"{reading}{{{mark}}}" if mark else reading)
+        else:
+            out.append(reading)
 
     out = []
     absorbed = 0
@@ -141,27 +153,24 @@ def rebuild_line(line, items, marked):
                 continue
             out.append(word)
             continue
-        absorbed = max((h.get("word_span", 1) for h in hits), default=1) - 1
-        for hit in hits:
-            reading = hit["reading"]
-            if reading == "":
-                continue  # the word is absorbed into a neighbouring token
-            if marked:
-                mark = MARKS.get((hit["choice"], hit["confidence"]), "?")
-                out.append(f"{reading}{{{mark}}}" if mark else reading)
-            else:
-                out.append(reading)
+        inserts = [h for h in hits if h.get("word_span", 1) == 0]
+        replaces = [h for h in hits if h.get("word_span", 1) != 0]
+        for hit in inserts:
+            emit(hit)
+        if not replaces:
+            if absorbed > 0:
+                absorbed -= 1
+                continue
+            out.append(word)
+            continue
+        absorbed = max(h.get("word_span", 1) for h in replaces) - 1
+        for hit in replaces:
+            emit(hit)
 
     # Insertions past the end of the e-text line (OCR had a word the e-text lacks).
     for idx in sorted(by_index):
         for hit in by_index[idx]:
-            if hit["reading"] == "":
-                continue
-            if marked:
-                mark = MARKS.get((hit["choice"], hit["confidence"]), "?")
-                out.append(f"{hit['reading']}{{{mark}}}" if mark else hit["reading"])
-            else:
-                out.append(hit["reading"])
+            emit(hit)
 
     rebuilt = " ".join(out)
     # Preserve the original leading indentation.
