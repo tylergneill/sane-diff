@@ -6,17 +6,60 @@ page of a Sanskrit edition. You have been given exactly one page directory:
 - `page.jpg` — the scan of the printed page, as it sits in the PDF
 - `diffs.json` — the list of disputed items on that page
 
-## The page image is the sole authority
+## What this is for
 
-`page.jpg` is what the printed edition actually says. The e-text reading and the
-OCR reading are two candidate transcriptions of it and nothing more. Neither has
-priority. Do not prefer the e-text because it is usually good, and do not prefer
-the OCR because it is mechanical. Read the page and report what is printed there.
+This pipeline saves a human editor work. It does not replace the editor. Most
+of the disagreements between the e-text and the OCR, roughly four in five, are
+easy to settle from the page, and settling them automatically is the whole job.
+The rest are hard cases, and the editor works through those by hand against the
+scan.
 
-One caution about the OCR specifically: its string is a guess about the page,
-not evidence about it. Do not reason backwards from how it spelt something to
-what the glyphs must be. A dropped vowel there can run two letters together
-into something that looks like a real and expected word.
+The people who will use the result trust the e-text. It was prepared by a human
+editor, and a corrected text is only useful to them if they can trust every
+change in it. A wrong change costs far more than a missed one. Once it is in
+the corrected text it looks like every other edit, so it is hard to find and
+hard to undo. A missed correction just remains as a known, flagged question.
+
+## Stay with the e-text unless the page shows otherwise
+
+The e-text is the default. Choose it unless the page gives you a clear reason
+not to.
+
+- **Take the OCR reading** when the page leads you to think the OCR is right
+  and the e-text is wrong. Be honest about any doubt: use `medium` or `low` if
+  you are not sure, and say in `note` what you could not settle.
+- **Choose `other`** when the page reads as neither candidate, and your own
+  reading is the one that best fits both the print and the context.
+- **Otherwise keep the e-text.** This includes the cases where the print is
+  unclear or the difference is too fine to make out, and nothing on the page
+  points away from the e-text. Mark those `low` and say in `note` what you
+  could not settle. That is how an item is left for the editor, and it is a
+  correct outcome, not a failure.
+
+Read the page for yourself, not through the OCR. Its string is a guess about the
+page, not evidence about it. Do not reason backwards from how it spelt
+something to what the glyphs must be: a dropped vowel can run two letters
+together into something that looks like a real and expected word.
+
+## Confidence
+
+- `high`: the printed characters are clear and you can read them without
+  inferring anything.
+- `medium`: the impression is imperfect, but the reading follows.
+- `low`: the print is smudged, broken, or ambiguous; the difference is too fine
+  to make out at this resolution; or you are choosing partly on what the word
+  ought to be.
+
+`low` is how the editor finds the hard cases, so use it whenever it applies.
+It is the ordinary mark for an item you could not settle. False confidence
+hides a hard case among the easy ones, where nobody will look at it again.
+
+An `other` is never `high`. It claims that the human editor and the OCR both
+missed something, and you cannot be certain of that. Use `medium` when you can
+read the glyphs clearly and `low` when you cannot.
+
+Use your knowledge of the language to recognise what is printed and to catch an
+editor's slip. Do not use it to supply a word the glyphs do not support.
 
 ## Adjudicate only the listed items
 
@@ -37,51 +80,38 @@ information, how the apparatus is delimited, which OCR artifacts are already
 known. When such a note is supplied it appears below under "Editor's notes", and
 you are expected to respect it.
 
-It tells you what you are looking at. It does not tell you what you will find —
-you still have to read the page. Where the note and the page disagree, the page
-wins: record what is printed, and say so in your `note` field so the item is
-flagged.
+It tells you what you are looking at. It does not tell you what you will find.
+You still have to read the page. Where the note and the page disagree, the page
+wins: record what is printed, mark the item `low`, and say so in your `note`
+field so the item is flagged.
 
-When no note is supplied, decide everything from the page image on your own, as
-you otherwise would. The note is always optional and nothing depends on it.
+When no note is supplied, decide everything from the page image on your own.
+The note is always optional and nothing depends on it.
 
 ## Locating an item
 
-`line` indexes the e-text and OCR files, which are line-parallel to each other. It is not the printed line number on the scan: the files carry a header line and a blank line between verses, so `line` runs ahead of what you count by eye, and the gap widens as you go down the page. The verses are mostly couplets but sometimes triplets, so the offset is not a fixed ratio you can correct for.
+`line` indexes the e-text and OCR files, which are line-parallel to each other.
+It is not the printed line number on the scan. The files carry a header line
+and a blank line between verses, so `line` runs ahead of what you count by eye,
+and the gap widens as you go down the page. The verses are mostly couplets but
+sometimes triplets, so you cannot correct for the offset with a fixed ratio.
 
-Locate an item by its `context` and `word_index`: find the line of the page whose text matches `context`, then count words into it. Use `line` only to judge roughly how far down the page to look.
+Locate an item by its `context` and `word_index`: find the line of the page
+whose text matches `context`, then count words into it. Use `line` only to judge
+roughly how far down the page to look.
 
 Ignore the running head and the page number. An item whose `context` belongs to
 the footnote apparatus is located in the apparatus the same way, by matching its
 text.
 
-## Report confidence honestly
+## Working files
 
-Use `high` only when the printed characters are clear and you can read them.
-Use `medium` when the impression is imperfect but the reading follows.
-Use `low` when the print is smudged, broken, or ambiguous enough that you are
-partly inferring. Low confidence on a bad impression is a useful signal and costs
-nothing. False confidence is the expensive failure — it is the one thing that
-makes the whole readout untrustworthy.
-
-An `other` verdict is never `high`. Claiming that neither transcription got it
-right is a claim that a human editor and the OCR both missed what you can see,
-and that is not something you are ever in a position to be certain of. Use
-`medium` when you can read the glyphs clearly and `low` when you cannot.
-
-## When neither candidate is right
-
-If the page reads as neither the e-text nor the OCR, commit to your own reading,
-based on what you see on the page and on what is sound in the language. Record it
-as `other` with the reading you actually see. Do not defer, do not leave an item
-blank, and do not fall back on a candidate you believe is wrong. Every `other`
-item is surfaced for human review, so an honest override is cheap.
-
-The one thing to hold back from is supplying what ought to be there. Use your
-knowledge of the language to recognise what is printed and to catch an editor's
-slip, not to reconstruct a word the glyphs do not support.
-
-Cap the confidence on any `other` at `medium`, however clear the print looks.
+Other adjudicators are working on other pages at the same time. Put any
+temporary file you make, such as a crop or enlargement of `page.jpg`, in a
+`scratch/` folder inside your own page directory. Never write to a shared temp
+or scratchpad directory: another page's adjudicator can overwrite a file there
+that has the same name, and you would then be reading the wrong page without
+knowing it.
 
 ## Output
 
@@ -99,6 +129,13 @@ Write `verdicts.json` into the same page directory. Exactly this structure:
     },
     {
       "id": "p0017-002",
+      "choice": "etext",
+      "reading": "ब्रह्मणा",
+      "confidence": "low",
+      "note": "Final vowel broken in print; cannot tell -ā from -o."
+    },
+    {
+      "id": "p0017-003",
       "choice": "other",
       "reading": "व्यवसायात्मिका",
       "confidence": "medium",
@@ -108,12 +145,12 @@ Write `verdicts.json` into the same page directory. Exactly this structure:
 }
 ```
 
-- `id` — echoed back unchanged from `diffs.json`
-- `choice` — `etext`, `ocr`, or `other`
-- `reading` — the final adjudicated text; required when `choice` is `other`,
+- `id`: echoed back unchanged from `diffs.json`
+- `choice`: `etext`, `ocr`, or `other`
+- `reading`: the final adjudicated text; required when `choice` is `other`,
   and an exact echo of the chosen source otherwise
-- `confidence` — `high`, `medium`, or `low`
-- `note` — one short sentence, present only when `choice` is `other` or
+- `confidence`: `high`, `medium`, or `low`
+- `note`: one short sentence, present only when `choice` is `other` or
   `confidence` is `low`; omit the key otherwise
 
 Return only this JSON structure, written to `verdicts.json`. No commentary

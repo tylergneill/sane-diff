@@ -2,6 +2,28 @@
 
 A workflow for using Claude to systematically adjudicate disagreements between two structured Sanskrit e-text files using its vision and natural language capabilities.
 
+## What it is for
+
+The aim is to cut down manual work, not to remove it. Roughly 80% of the
+differences between an e-text and its OCR are easy to settle from the scan: a
+mark the OCR dropped, a typo in the e-text. This tool settles those
+automatically. The remaining 20% or so are hard cases, such as broken type,
+ambiguous conjuncts, or readings that depend on knowing the text. It leaves
+those for you to adjudicate by hand, in `meld` or a similar diff tool, with the
+scan open beside it.
+
+The e-text is the default, because it is what readers trust. The agent adopts
+the OCR reading when the scan points to it, at whatever confidence it actually
+has, so an uncertain adoption is marked medium or low. It proposes a
+reading of its own (`other`, never above medium confidence) only when neither
+source fits the page. Everything else keeps the e-text, and any item the agent
+could not settle is marked low confidence for you to check.
+
+Leaving the hard cases for you is deliberate. A wrong correction, where the OCR's
+reading replaces a sound e-text reading, looks like every other change once it
+is in the output, so it is hard to find and hard to undo. An open item costs
+a minute of review.
+
 ## Setup
 
 Put in `input/` two page- and line-aligned versions of a text, e.g.:
@@ -96,7 +118,7 @@ Three modes, narrowest first:
 | flag | shows |
 |---|---|
 | `--overrides` | `other` verdicts — the only ones that can put a reading into the output that neither source contains |
-| `--low` | every low-confidence verdict, whatever was chosen: what an agent said it could not settle |
+| `--low` | every low-confidence verdict, whatever was chosen: what an agent said it could not settle, i.e. the hard cases left for you |
 | `--all` | every low- and medium-confidence verdict *(default)* |
 
 ```sh
