@@ -1,4 +1,12 @@
-# OCR Adjudication Pipeline — Design Spec
+# Adjudication Pipeline — Design Spec
+
+> This spec was written for the case the pipeline was built for: a human-made
+> e-text checked against OCR of the same edition. The code has since
+> generalized the two inputs to a **base** (the e-text here, kept by default)
+> and a **suggester** (the OCR here), and neither has to be OCR any more. The
+> reasoning below still speaks of e-text and OCR, because it is reasoning about
+> that case; file names, fields and choice values are given as the code has
+> them now. For whole-page rewriting (the page unit), see `scripts/merge.py`.
 
 ## Purpose
 
@@ -10,9 +18,9 @@ The e-text is already good. OCR is a second opinion, not a replacement. The agen
 
 The user supplies three required files:
 
-1. `etext.txt` — the pre-existing e-text, one line per printed line, page-aligned.
-2. `ocr.txt` — OCR output from the same edition, same line and page alignment.
-3. `source.pdf` — the scanned printed edition.
+1. `base.txt` — the pre-existing e-text, one line per printed line, page-aligned.
+2. `suggester.txt` — OCR output from the same edition, same line and page alignment.
+3. `image.pdf` — the scanned printed edition.
 
 Assumption treated as reliable throughout: line numbers and page boundaries are accurate and consistent across all three. The pipeline does not attempt to re-derive alignment, and every location reference downstream is a page number plus a line number.
 
@@ -31,15 +39,16 @@ One procedural guardrail, stated in the prompt rather than enforced in code: whe
 ```
 repo/
   input/
-    etext.txt
-    ocr.txt
-    source.pdf
+    base.txt
+    suggester.txt
+    image.pdf
     notes.md         optional; expert account of the two texts
   scripts/
     prep.py          builds the working directory
     pending.py       lists pages still awaiting adjudication
     apply.py         writes the corrected text from the verdicts
     report.py        merges verdicts into the readout
+    review.py        walks flagged verdicts against the scan
   agents/
     dispatcher.md    fan-out prompt
     adjudicator.md   sub-agent prompt
@@ -47,13 +56,13 @@ repo/
     0001/
       page.jpg
       diffs.json
-      verdicts.json  (written by the sub-agent)
+      verdicts.claude-vision.json  (written by the sub-agent)
     0002/
     ...
-  output/corrected.txt          the deliverable
-  output/corrected.marked.txt   same text, changes marked for reading
-  output/report.tsv             readout
-  output/report.json            same rows, machine-readable
+  output/claude-vision/corrected.txt          the deliverable
+  output/claude-vision/corrected.marked.txt   same text, changes marked for reading
+  output/claude-vision/report.tsv             readout
+  output/claude-vision/report.json            same rows, machine-readable
 ```
 
 The working directory is disposable. Everything in `tmp/` is regenerable from the three input files, so it stays out of version control; `input/`, `scripts/`, `agents/` and the emitted deliverables are tracked.
@@ -67,7 +76,7 @@ Responsibilities:
 - Extract each PDF page's embedded scan to `page.jpg`, named by zero-padded page number.
 
 A scanned edition stores one image per page, so the page image is already in the PDF. `pdfimages -j` copies that JPEG stream out byte for byte rather than rasterising the page, which is both faster and lossless: re-rendering a 200 DPI scan at 300 DPI interpolates pixels that were never scanned. This also removes the ImageMagick and mupdf dependencies — poppler alone is enough.
-- Split `etext.txt` and `ocr.txt` into per-page blocks using the existing page markers.
+- Split `base.txt` and `suggester.txt` into per-page blocks using the existing page markers.
 - Within each page, diff the two texts line by line, then word by word within changed lines.
 - Write one `diffs.json` per page.
 
@@ -84,7 +93,7 @@ The sub-agent is given `page.jpg` in full, at full resolution, plus that page's 
 Each verdict record contains:
 
 - the item id, echoed back unchanged
-- `choice` — one of `etext`, `ocr`, or `other`
+- `choice` — one of `base`, `suggester`, or `other`
 - `reading` — the final adjudicated text; required when choice is `other`, and echoing the chosen source otherwise
 - `confidence` — high, medium, or low
 - `note` — one short sentence, present only when choice is `other` or confidence is low
@@ -94,13 +103,13 @@ When neither candidate matches what is printed, the agent commits to its own rea
 
 ## Stage three — the corrected text
 
-The primary deliverable. Every verdict is applied to the e-text and the result written as `corrected.txt`, carrying the same page markers and line structure as the input, so it diffs cleanly against `etext.txt` and shows only real changes.
+The primary deliverable. Every verdict is applied to the e-text and the result written as `corrected.txt`, carrying the same page markers and line structure as the input, so it diffs cleanly against `base.txt` and shows only real changes.
 
 Every verdict is applied regardless of confidence. A text with only the confident changes applied is a third artifact, neither the original nor the corrected version, and reconciling it by hand is the work the pipeline exists to avoid. Confidence governs how a change is *marked*, not whether it is made.
 
 Alongside it, `corrected.marked.txt`: the same text with each adjudicated word carrying an inline marker for its confidence, and a distinct marker for `other`. The clean file stays authoritative and usable downstream; the marked file is for reading. Both are generated from the same verdict data, so neither is derived from the other by hand.
 
-`other` is marked distinctly from low confidence. They are different failure modes: an `other` is the agent asserting a reading neither source proposed — more information, and more risk if wrong — while a low-confidence `etext` is a weak nod to a reading that was already there.
+`other` is marked distinctly from low confidence. They are different failure modes: an `other` is the agent asserting a reading neither source proposed — more information, and more risk if wrong — while a low-confidence `base` is a weak nod to a reading that was already there.
 
 ## Stage four — report.py
 
@@ -122,7 +131,7 @@ Everything else stays silent. Alongside the full report, emit a filtered view co
 
 ## Review
 
-Review happens in an ordinary diff viewer. `output/corrected.txt` and `output/corrected.marked.txt` diff against the input e-text, and `output/report.tsv` supplies the choice, confidence and note behind each item.
+Review happens in an ordinary diff viewer. `output/claude-vision/corrected.txt` and `output/claude-vision/corrected.marked.txt` diff against the input e-text, and `output/claude-vision/report.tsv` supplies the choice, confidence and note behind each item.
 
 Review is by exception. Every verdict is already applied, so review exists to *reject*, not to approve one item at a time — defaulting to approval is what the confidence scoring was for. A verdict is corrected by editing the page's `verdicts.json` and re-running `apply.py`, which keeps every stage regenerable from the inputs plus the verdicts.
 

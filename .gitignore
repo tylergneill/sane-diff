@@ -4,6 +4,9 @@
 # Python
 __pycache__/
 
+# API keys (GEMINI_API_KEY=...), read by scripts/gemini.py.
+.env
+
 # Edition data: supplied per text, never carried in the repo.
 input/
 

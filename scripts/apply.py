@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Stage three: apply every verdict to the e-text.
+"""Item unit: apply every verdict of one run to the base text.
 
 Writes corrected.txt — same page markers and line structure as the input,
-so it diffs cleanly against etext.txt and shows only real changes — and
+so it diffs cleanly against base.txt and shows only real changes — and
 corrected.marked.txt, the same text with each adjudicated word marked by
 confidence and choice.
 
@@ -11,8 +11,8 @@ confident changes applied is neither the original nor the corrected version,
 and reconciling it by hand is the work this pipeline exists to avoid.
 Confidence governs how a change is marked, not whether it is made.
 
-Corrections are made by editing a page's verdicts.json and re-running this
-script; diff the output against input/etext.txt in a diff viewer to review.
+Corrections are made by editing a page's verdicts.<run>.json and re-running this
+script; diff the output against input/base.txt in a diff viewer to review.
 """
 
 import argparse
@@ -21,15 +21,17 @@ import re
 import sys
 from pathlib import Path
 
+from common import PAGES, add_run_arg, marker_regex, resolve_marker, verdicts_name
+
 # Marked-file annotations. `other` is distinct from low confidence: it is the
 # agent asserting a reading neither source proposed, not a weak nod to one.
 MARKS = {
-    ("etext", "high"): "",
-    ("etext", "medium"): "~",
-    ("etext", "low"): "?",
-    ("ocr", "high"): "+",
-    ("ocr", "medium"): "+~",
-    ("ocr", "low"): "+?",
+    ("base", "high"): "",
+    ("base", "medium"): "~",
+    ("base", "low"): "?",
+    ("suggester", "high"): "+",
+    ("suggester", "medium"): "+~",
+    ("suggester", "low"): "+?",
     ("other", "high"): "!",
     ("other", "medium"): "!~",
     ("other", "low"): "!?",
@@ -75,13 +77,13 @@ def split_pages_with_markers(text, marker):
     return blocks
 
 
-def load_verdicts(work):
+def load_verdicts(work, run):
     """Return {(page, line): [item dicts]} joined with their verdicts."""
     by_line = {}
     problems = []
     for page_dir in sorted(p for p in work.iterdir() if p.is_dir()):
         diffs_path = page_dir / "diffs.json"
-        verdicts_path = page_dir / "verdicts.json"
+        verdicts_path = page_dir / verdicts_name(run)
         if not diffs_path.exists() or not verdicts_path.exists():
             continue
         diffs = json.loads(diffs_path.read_text(encoding="utf-8"))
@@ -89,7 +91,7 @@ def load_verdicts(work):
         try:
             verdicts = json.loads(verdicts_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
-            problems.append(f"{page_dir.name}: verdicts.json is not valid JSON ({exc})")
+            problems.append(f"{page_dir.name}: {verdicts_path.name} is not valid JSON ({exc})")
             continue
         for v in verdicts.get("verdicts", []):
             item = items.get(v.get("id"))
@@ -98,13 +100,13 @@ def load_verdicts(work):
             choice = v.get("choice", "")
             reading = v.get("reading")
             if reading is None:
-                reading = item.get(choice, "") if choice in ("etext", "ocr") else ""
+                reading = item.get(choice, "") if choice in ("base", "suggester") else ""
             by_line.setdefault((item["page"], item["line"]), []).append({
                 "id": v["id"],
                 "word_index": item["word_index"],
                 "word_span": item.get("word_span", 1),
-                "etext": item.get("etext", ""),
-                "ocr": item.get("ocr", ""),
+                "base": item.get("base", ""),
+                "suggester": item.get("suggester", ""),
                 "reading": reading,
                 "choice": choice,
                 "confidence": v.get("confidence", ""),
@@ -113,18 +115,18 @@ def load_verdicts(work):
 
 
 def rebuild_line(line, items, marked):
-    """Apply this line's verdicts to one e-text line.
+    """Apply this line's verdicts to one base line.
 
     Works on the word list rather than by string substitution, so a word that
     appears twice on a line is not changed in the wrong place. Items are keyed
-    by word_index; several may share an index when OCR merged tokens, in which
+    by word_index; several may share an index when the suggester merged tokens, in which
     case they are applied in id order and empty readings drop the word.
 
-    An item's word_span says how many e-text words it replaces: a spacing
+    An item's word_span says how many base words it replaces: a spacing
     item covering `tvak cakṣuṣī` has span 2, so the second word is consumed
     by the item rather than emitted again on its own. A span of 0 is an
-    insertion before the word at word_index (a word only the OCR has); it
-    replaces nothing, so that e-text word is still emitted after it.
+    insertion before the word at word_index (a word only the suggester has);
+    it replaces nothing, so that base word is still emitted after it.
     """
     words = line.split()
     # Group by index: a merge puts the joined token at one index and leaves
@@ -167,7 +169,7 @@ def rebuild_line(line, items, marked):
         for hit in replaces:
             emit(hit)
 
-    # Insertions past the end of the e-text line (OCR had a word the e-text lacks).
+    # Insertions past the end of the base line (the suggester had a word the base lacks).
     for idx in sorted(by_index):
         for hit in by_index[idx]:
             emit(hit)
@@ -182,27 +184,30 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--input", default="input", type=Path)
-    ap.add_argument("--work", default="tmp/pages", type=Path)
-    ap.add_argument("--marker", default=r"^\s*<p\.(\d+)>\s*$")
-    ap.add_argument("--out", default="output/corrected.txt", type=Path)
+    ap.add_argument("--work", default=PAGES, type=Path)
+    add_run_arg(ap)
+    ap.add_argument("--marker", default="auto", type=marker_regex)
+    ap.add_argument("--out", default=None, type=Path,
+                    help="default: output/<run>/corrected.txt")
     ap.add_argument("--marked-out", default=None, type=Path,
                     help="default: alongside --out, named <stem>.marked<suffix>")
     args = ap.parse_args()
 
-    etext_path = args.input / "etext.txt"
-    if not etext_path.exists():
-        die(f"missing {etext_path}")
+    base_path = args.input / "base.txt"
+    if not base_path.exists():
+        die(f"missing {base_path}")
     if not args.work.is_dir():
         die(f"no work directory at {args.work}")
 
+    args.out = args.out or Path("output") / args.run / "corrected.txt"
     marked_out = args.marked_out or args.out.with_suffix(f".marked{args.out.suffix}")
 
-    by_line, problems = load_verdicts(args.work)
+    by_line, problems = load_verdicts(args.work, args.run)
     if not by_line:
-        die("no verdicts found; run the adjudication stage first")
+        die(f"no {verdicts_name(args.run)} found; run that resolve first")
 
-    text = etext_path.read_text(encoding="utf-8")
-    blocks = split_pages_with_markers(text, args.marker)
+    text = base_path.read_text(encoding="utf-8")
+    blocks = split_pages_with_markers(text, resolve_marker(args.marker, text, "base.txt", die))
 
     clean_out, mark_out = [], []
     applied = 0

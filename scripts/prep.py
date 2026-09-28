@@ -1,38 +1,28 @@
 #!/usr/bin/env python3
-"""Stage one: turn etext.txt, ocr.txt and source.pdf into tmp/pages/NNNN/.
+"""Item unit, stage one: turn base.txt, suggester.txt and image.pdf into
+tmp/pages/NNNN/.
 
 Fully deterministic, no model involved. Extracts each PDF page's embedded
 scan, splits both texts into per-page blocks on their page markers, diffs them
 line by line and then word by word, and writes one diffs.json per page
 that disagrees. Pages where the two texts agree get no directory at all.
+
+The two texts must be page- and line-aligned.
+
+Page images are extracted only if input/image.pdf exists. They are deleted
+again after each resolve run and brought back for review; images.py does
+both.
 """
 
 import argparse
 import difflib
 import json
-import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_MARKER = r"^\s*<p\.(\d+)>\s*$"
-
-try:
-    from tqdm import tqdm
-except ImportError:  # optional; the scripts stay runnable without it
-    def tqdm(iterable, **kwargs):
-        desc = kwargs.get("desc", "")
-        total = kwargs.get("total") or len(iterable)
-        live = sys.stderr.isatty()
-        for n, item in enumerate(iterable, 1):
-            if live:
-                print(f"\r{desc}: {n}/{total}", end="", file=sys.stderr, flush=True)
-            yield item
-        if live:
-            print(file=sys.stderr)
-        else:
-            print(f"{desc}: {total}", file=sys.stderr)
+from common import PAGES, marker_regex, parse_page_selection, resolve_marker, split_pages, tqdm
 
 
 def die(msg):
@@ -40,98 +30,62 @@ def die(msg):
     sys.exit(1)
 
 
-def split_pages(text, marker, label):
-    """Split a text into {page_number: [lines]} on its page markers.
-
-    Line numbers are 1-based within each page and count every line of the
-    page block, blank lines included, so that etext and ocr line numbers
-    refer to the same printed line. Keep it that way: the line alignment in
-    page_diffs depends on both texts being numbered the same, and skipping
-    blanks would desynchronize them.
-
-    Because the e-text is blank-line separated, these numbers run ahead of
-    the printed line count on the scan. They are not a page coordinate, and
-    an adjudicator reading the image should locate items by context rather
-    than by counting lines down the page.
-    """
-    pattern = re.compile(marker)
-    pages = {}
-    current = None
-    lines = []
-    for raw in text.splitlines():
-        m = pattern.match(raw)
-        if m:
-            if current is not None:
-                pages[current] = lines
-            current = int(m.group(1))
-            if current in pages:
-                die(f"{label}: page {current} appears more than once")
-            lines = []
-        else:
-            lines.append(raw)
-    if current is not None:
-        pages[current] = lines
-    elif lines:
-        die(f"{label}: no page markers matched {marker!r}")
-    return pages
-
-
-def word_diffs(etext_line, ocr_line):
+def word_diffs(base_line, sugg_line):
     """Word-level disagreements within a pair of lines.
 
-    Returns a list of (word_index, word_span, etext_reading, ocr_reading)
-    where word_index is the index into the e-text line's words (or the
-    insertion point, for words the e-text lacks) and word_span is how many
-    e-text words the item covers. Empty string means "absent here".
+    Returns a list of (word_index, word_span, base_reading, sugg_reading)
+    where word_index is the index into the base line's words (or the
+    insertion point, for words the base lacks) and word_span is how many
+    base words the item covers. Empty string means "absent here".
 
     A run whose two sides differ only in whitespace — `tvak cakṣuṣī` against
     `tvakcakṣuṣī` — is one question about the printed page, not one question
     per token, so it is emitted as a single item spanning both words rather
-    than as a pair in which one half has no OCR reading at all.
+    than as a pair in which one half has no suggester reading at all.
     """
-    ewords = etext_line.split()
-    owords = ocr_line.split()
+    bwords = base_line.split()
+    swords = sugg_line.split()
     out = []
-    matcher = difflib.SequenceMatcher(a=ewords, b=owords, autojunk=False)
+    matcher = difflib.SequenceMatcher(a=bwords, b=swords, autojunk=False)
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         if tag == "equal":
             continue
         if tag == "replace":
-            if "".join(ewords[i1:i2]) == "".join(owords[j1:j2]):
+            if "".join(bwords[i1:i2]) == "".join(swords[j1:j2]):
                 # Same characters, different spacing: one item for the run.
-                out.append((i1, i2 - i1, " ".join(ewords[i1:i2]),
-                            " ".join(owords[j1:j2])))
+                out.append((i1, i2 - i1, " ".join(bwords[i1:i2]),
+                            " ".join(swords[j1:j2])))
                 continue
             # Pair them up positionally; the leftovers are adds or drops.
             span = max(i2 - i1, j2 - j1)
             for k in range(span):
-                e = ewords[i1 + k] if i1 + k < i2 else ""
-                o = owords[j1 + k] if j1 + k < j2 else ""
+                e = bwords[i1 + k] if i1 + k < i2 else ""
+                o = swords[j1 + k] if j1 + k < j2 else ""
                 out.append((min(i1 + k, i2 - 1 if i2 > i1 else i1), 1, e, o))
         elif tag == "delete":
             for k in range(i1, i2):
-                out.append((k, 1, ewords[k], ""))
+                out.append((k, 1, bwords[k], ""))
         elif tag == "insert":
             for k in range(j1, j2):
-                out.append((i1, 0, "", owords[k]))
+                out.append((i1, 0, "", swords[k]))
     return out
 
 
-def page_diffs(page_no, elines, olines):
+def page_diffs(page_no, blines, slines):
     """All diff items for one page, line-aligned then word-aligned."""
     items = []
-    matcher = difflib.SequenceMatcher(a=elines, b=olines, autojunk=False)
+    matcher = difflib.SequenceMatcher(a=blines, b=slines, autojunk=False)
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         if tag == "equal":
             continue
         span = max(i2 - i1, j2 - j1)
         for k in range(span):
-            eline = elines[i1 + k] if i1 + k < i2 else ""
-            oline = olines[j1 + k] if j1 + k < j2 else ""
+            bline = blines[i1 + k] if i1 + k < i2 else ""
+            sline = slines[j1 + k] if j1 + k < j2 else ""
             lineno = (i1 + k if i1 + k < i2 else i2 - 1 if i2 > i1 else i1) + 1
-            if eline.strip() == oline.strip():
+            if bline.strip() == sline.strip():
                 continue
-            for widx, wspan, eword, oword in word_diffs(eline, oline):
+            for widx, wspan, bword, sword in word_diffs(bline, sline):
                 items.append(
                     {
                         "id": f"p{page_no:04d}-{len(items) + 1:03d}",
@@ -139,9 +93,9 @@ def page_diffs(page_no, elines, olines):
                         "line": lineno,
                         "word_index": widx,
                         "word_span": wspan,
-                        "etext": eword,
-                        "ocr": oword,
-                        "context": eline if eline else oline,
+                        "base": bword,
+                        "suggester": sword,
+                        "context": bline if bline else sline,
                     }
                 )
     return items
@@ -157,7 +111,7 @@ def extract_pages(pdf, outdir, pages):
     pixels that were never scanned.
 
     Pages whose embedded image is not a single JPEG are reported rather than
-    silently skipped; see --render for the fallback.
+    silently skipped.
     """
     if not shutil.which("pdfimages"):
         die("pdfimages not found on PATH (install poppler)")
@@ -197,35 +151,38 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--input", default="input", type=Path)
-    ap.add_argument("--work", default="tmp/pages", type=Path)
-    ap.add_argument("--marker", default=DEFAULT_MARKER,
-                    help="regex for a page marker line, group 1 = page number")
+    ap.add_argument("--work", default=PAGES, type=Path)
+    ap.add_argument("--marker", default="auto", type=marker_regex,
+                    help="page marker: auto (default: <p.12> or === 12 ===, detected "
+                         "per file), or a regex whose group 1 is the page number")
     ap.add_argument("--pages", default=None,
                     help="restrict to these pages, e.g. 12-21 or 3,5,9")
-    ap.add_argument("--no-render", action="store_true",
-                    help="write diffs.json only, skip image extraction")
+    ap.add_argument("--no-images", action="store_true",
+                    help="write diffs.json only, even if image.pdf exists")
     args = ap.parse_args()
 
-    etext_path = args.input / "etext.txt"
-    ocr_path = args.input / "ocr.txt"
-    pdf_path = args.input / "source.pdf"
-    for p in (etext_path, ocr_path):
+    base_path = args.input / "base.txt"
+    sugg_path = args.input / "suggester.txt"
+    pdf_path = args.input / "image.pdf"
+    for p in (base_path, sugg_path):
         if not p.exists():
             die(f"missing input file: {p}")
-    if not args.no_render and not pdf_path.exists():
-        die(f"missing input file: {pdf_path}")
 
-    etext = split_pages(etext_path.read_text(encoding="utf-8"), args.marker, "etext.txt")
-    ocr = split_pages(ocr_path.read_text(encoding="utf-8"), args.marker, "ocr.txt")
+    base_text = base_path.read_text(encoding="utf-8")
+    sugg_text = sugg_path.read_text(encoding="utf-8")
+    base = split_pages(base_text, resolve_marker(args.marker, base_text, "base.txt", die),
+                       "base.txt", die)
+    sugg = split_pages(sugg_text, resolve_marker(args.marker, sugg_text, "suggester.txt", die),
+                       "suggester.txt", die)
 
-    only_e = sorted(set(etext) - set(ocr))
-    only_o = sorted(set(ocr) - set(etext))
-    if only_e or only_o:
-        print(f"prep.py: warning: pages only in etext: {only_e or 'none'}; "
-              f"only in ocr: {only_o or 'none'}", file=sys.stderr)
+    only_b = sorted(set(base) - set(sugg))
+    only_s = sorted(set(sugg) - set(base))
+    if only_b or only_s:
+        print(f"prep.py: warning: pages only in base: {only_b or 'none'}; "
+              f"only in suggester: {only_s or 'none'}", file=sys.stderr)
 
     wanted = parse_page_selection(args.pages) if args.pages else None
-    shared = sorted(set(etext) & set(ocr))
+    shared = sorted(set(base) & set(sugg))
     if wanted is not None:
         shared = [p for p in shared if p in wanted]
 
@@ -233,7 +190,7 @@ def main():
     with_diffs = []
     total_items = 0
     for page_no in tqdm(shared, desc="diffing", unit="page"):
-        items = page_diffs(page_no, etext[page_no], ocr[page_no])
+        items = page_diffs(page_no, base[page_no], sugg[page_no])
         if not items:
             continue
         with_diffs.append(page_no)
@@ -245,7 +202,7 @@ def main():
             encoding="utf-8",
         )
 
-    if with_diffs and not args.no_render:
+    if with_diffs and not args.no_images and pdf_path.exists():
         extract_pages(pdf_path, args.work, with_diffs)
 
     clean = len(shared) - len(with_diffs)
@@ -253,21 +210,8 @@ def main():
     print(f"pages in agreement (skipped): {clean}")
     print(f"pages with diffs: {len(with_diffs)}")
     print(f"diff items:       {total_items}")
-
-
-def parse_page_selection(spec):
-    """Parse '12-21' or '3,5,9' or a mix into a set of page numbers."""
-    wanted = set()
-    for chunk in spec.split(","):
-        chunk = chunk.strip()
-        if not chunk:
-            continue
-        if "-" in chunk:
-            lo, hi = chunk.split("-", 1)
-            wanted.update(range(int(lo), int(hi) + 1))
-        else:
-            wanted.add(int(chunk))
-    return wanted
+    if not pdf_path.exists():
+        print(f"no {pdf_path}, so no page images: vision runs are unavailable")
 
 
 if __name__ == "__main__":

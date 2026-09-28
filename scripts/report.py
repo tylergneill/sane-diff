@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage three: merge every verdicts.json into report.tsv.
+"""Item unit: merge one run's verdicts into report.tsv.
 
 Walks tmp/pages in page order, joins each verdict back to its diff item,
 and writes one row per adjudicated item. Tab-separated, because Devanagari
@@ -12,9 +12,11 @@ import json
 import sys
 from pathlib import Path
 
-COLUMNS = ["page", "line", "id", "etext", "ocr", "reading", "choice", "confidence",
+from common import PAGES, add_run_arg, verdicts_name
+
+COLUMNS = ["page", "line", "id", "base", "suggester", "reading", "choice", "confidence",
            "decided_by", "note"]
-CHOICES = ("etext", "ocr", "other")
+CHOICES = ("base", "suggester", "other")
 CONFIDENCES = ("high", "medium", "low")
 
 
@@ -24,15 +26,14 @@ def clean(value):
     return text.replace("\t", " ").replace("\r", " ").replace("\n", " ").strip()
 
 
-def load_page(page_dir, problems):
+def load_page(page_dir, run, problems):
     """Join one page's verdicts onto its diff items. Returns a list of rows."""
     diffs_path = page_dir / "diffs.json"
-    verdicts_path = page_dir / "verdicts.json"
+    verdicts_path = page_dir / verdicts_name(run)
     if not diffs_path.exists():
-        problems.append(f"{page_dir.name}: no diffs.json")
-        return []
+        return []  # the two texts agree on this page: nothing to adjudicate
     if not verdicts_path.exists():
-        problems.append(f"{page_dir.name}: not yet adjudicated (no verdicts.json)")
+        problems.append(f"{page_dir.name}: no {verdicts_path.name} yet")
         return []
 
     diffs = json.loads(diffs_path.read_text(encoding="utf-8"))
@@ -41,7 +42,7 @@ def load_page(page_dir, problems):
     try:
         verdicts = json.loads(verdicts_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        problems.append(f"{page_dir.name}: verdicts.json is not valid JSON ({exc})")
+        problems.append(f"{page_dir.name}: {verdicts_path.name} is not valid JSON ({exc})")
         return []
 
     rows = []
@@ -70,7 +71,7 @@ def load_page(page_dir, problems):
 
         reading = verdict.get("reading")
         if reading is None:
-            reading = item.get(choice, "") if choice in ("etext", "ocr") else ""
+            reading = item.get(choice, "") if choice in ("base", "suggester") else ""
             if choice == "other":
                 problems.append(f"{page_dir.name}: {vid} is 'other' with no reading")
 
@@ -79,8 +80,8 @@ def load_page(page_dir, problems):
             "line": item["line"],
             "word_index": item.get("word_index", 0),
             "id": vid,
-            "etext": clean(item.get("etext")),
-            "ocr": clean(item.get("ocr")),
+            "base": clean(item.get("base")),
+            "suggester": clean(item.get("suggester")),
             "reading": clean(reading),
             "choice": clean(choice),
             "confidence": clean(confidence),
@@ -117,26 +118,30 @@ def write_tsv(path, rows):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--work", default="tmp/pages", type=Path)
-    ap.add_argument("--out", default="output/report.tsv", type=Path)
+    ap.add_argument("--work", default=PAGES, type=Path)
+    add_run_arg(ap)
+    ap.add_argument("--out", default=None, type=Path, help="default: output/<run>/report.tsv")
     ap.add_argument("--flagged-out", default=None, type=Path,
                     help="default: alongside --out, named <stem>.flagged.tsv")
     ap.add_argument("--json-out", default=None, type=Path,
                     help="default: alongside --out, named <stem>.json")
-    ap.add_argument("--verdicts-out", default="output/verdicts.all.json", type=Path,
-                    help="every page's verdicts in one searchable file")
+    ap.add_argument("--verdicts-out", default=None, type=Path,
+                    help="every page's verdicts in one searchable file; "
+                         "default: output/<run>/verdicts.all.json")
     args = ap.parse_args()
 
     if not args.work.is_dir():
         print(f"report.py: no work directory at {args.work}", file=sys.stderr)
         sys.exit(1)
 
+    args.out = args.out or Path("output") / args.run / "report.tsv"
+    args.verdicts_out = args.verdicts_out or args.out.parent / "verdicts.all.json"
     flagged_out = args.flagged_out or args.out.with_suffix(".flagged.tsv")
 
     problems = []
     rows = []
     for page_dir in sorted(p for p in args.work.iterdir() if p.is_dir()):
-        rows.extend(load_page(page_dir, problems))
+        rows.extend(load_page(page_dir, args.run, problems))
 
     rows.sort(key=lambda r: (r["page"], r["line"], r["id"]))
     flagged_rows = [r for r in rows if flagged(r)]
@@ -152,7 +157,7 @@ def main():
     by_confidence = {c: sum(1 for r in rows if r["confidence"] == c) for c in CONFIDENCES}
 
     print(f"items adjudicated: {len(rows)}")
-    print(f"  etext: {by_choice['etext']}   ocr: {by_choice['ocr']}   other: {by_choice['other']}")
+    print(f"  base: {by_choice['base']}   suggester: {by_choice['suggester']}   other: {by_choice['other']}")
     print(f"  confidence — high: {by_confidence['high']}  "
           f"medium: {by_confidence['medium']}  low: {by_confidence['low']}")
     decided = sum(1 for r in rows if r["decided_by"] == "human")
@@ -169,7 +174,7 @@ def main():
         "items": rows,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    # The per-page verdicts.json files stay the unit of work -- the dispatcher
+    # The per-page verdict files stay the unit of work -- the dispatcher
     # resumes on their presence and the agents write them independently. This
     # is a read-only consolidation of them, for searching and diffing.
     pages = {}

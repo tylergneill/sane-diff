@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Walk the questionable verdicts one page at a time, next to the scan.
 
-Reads output/report.tsv and groups the selected items by page, opening each
+Reads output/<run>/report.tsv and groups the selected items by page, opening each
 page scan as it goes so the print can be checked against the reading.
 
 Three modes, narrowest first:
@@ -14,16 +14,16 @@ Three modes, narrowest first:
                 an agent said it could not settle.
   --all         every low- and medium-confidence verdict (the default).
 
-High-confidence etext and ocr verdicts are never shown; with 86 of 100 items
+High-confidence base and suggester verdicts are never shown; with 86 of 100 items
 here, reviewing them is reviewing the whole run. They are not thereby beyond
 question — an agent can be confidently wrong, and nothing in the walk will
 surface it. Those are found by reading the output or diffing it against the
-e-text, and settled with --set.
+base, and settled with --set.
 
 --set ID=CHOICE settles one named item without walking anything, at any
 confidence. It takes the reading from diffs.json rather than from you, so the
 text cannot drift from the source it names, and marks the item decided_by
-human. Editing verdicts.json by hand does the same job with two ways to go
+human. Editing the verdict file by hand does the same job with two ways to go
 wrong: changing `choice` while leaving `reading` alone is silently ignored by
 apply.py, which writes `reading` verbatim, and retyping `reading` can put a
 third text into the output that neither source contains.
@@ -42,8 +42,12 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-REPORT = Path("output/report.tsv")
-PAGES = Path("tmp/pages")
+from common import PAGES as PAGES_DIR, add_run_arg, verdicts_name
+
+# Set from --run in main(); review works on one run at a time.
+REPORT = None
+VERDICTS = None
+PAGES = Path(PAGES_DIR)
 
 
 def rows(path, only=None):
@@ -67,7 +71,7 @@ def parse_pages(spec):
     return out
 
 
-CHOICES = ["etext", "ocr", "other"]
+CHOICES = ["base", "suggester", "other"]
 CONFIDENCES = ["high", "medium", "low"]
 
 
@@ -105,7 +109,7 @@ def summary(counts):
 
 
 def override(page, item_id, choice):
-    """Rewrite one verdict in a page's verdicts.json, leaving its siblings alone.
+    """Rewrite one verdict in a page's verdict file, leaving its siblings alone.
 
     The reading is taken from diffs.json rather than retyped, so it cannot
     drift from the source it claims to be. Confidence becomes `high` -- a human
@@ -114,10 +118,10 @@ def override(page, item_id, choice):
     confirmed reading from a confident machine one.
     """
     page_dir = PAGES / f"{page:04d}"
-    verdicts_path = page_dir / "verdicts.json"
+    verdicts_path = page_dir / VERDICTS
     diffs_path = page_dir / "diffs.json"
     if not verdicts_path.exists() or not diffs_path.exists():
-        return f"page {page}: verdicts.json or diffs.json missing"
+        return f"page {page}: {VERDICTS} or diffs.json missing"
 
     diffs = json.loads(diffs_path.read_text(encoding="utf-8"))
     item = next((i for i in diffs["items"] if i["id"] == item_id), None)
@@ -133,7 +137,7 @@ def override(page, item_id, choice):
                       "confidence": "high", "decided_by": "human"})
             break
     else:
-        return f"{item_id}: not in verdicts.json"
+        return f"{item_id}: not in {VERDICTS}"
 
     verdicts_path.write_text(
         json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -150,8 +154,8 @@ def show(row, n=None):
     blank = "(none)"
     tag = f"{n}) " if n else "  "
     print(f"  {tag}{row['id']}  line {row['line']}  [{row['choice']}/{row['confidence']}]")
-    print(f"    etext : {row['etext'] or blank}")
-    print(f"    ocr   : {row['ocr'] or blank}")
+    print(f"    base  : {row['base'] or blank}")
+    print(f"    sugg  : {row['suggester'] or blank}")
     print(f"    →     : {row['reading'] or blank}")
     if row.get("note"):
         print(f"    why   : {row['note']}")
@@ -161,13 +165,14 @@ def show(row, n=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    add_run_arg(ap)
     ap.add_argument("--pages", help="restrict to these pages, e.g. 30 or 12-24,96")
     ap.add_argument("--no-clear", action="store_true",
                     help="print every page at once instead of clearing between them")
     ap.add_argument("--summary", action="store_true",
                     help="print a source-by-confidence table of every verdict and exit")
     ap.add_argument("--set", metavar="ID=CHOICE", action="append", dest="settings",
-                    help="override one verdict without walking, e.g. p0002-002=ocr; "
+                    help="override one verdict without walking, e.g. p0002-002=suggester; "
                          "repeatable. Works at any confidence, including high.")
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--overrides", action="store_true",
@@ -177,6 +182,10 @@ def main():
     mode.add_argument("--all", action="store_true",
                       help="every low- and medium-confidence verdict (default)")
     args = ap.parse_args()
+
+    global REPORT, VERDICTS
+    REPORT = Path("output") / args.run / "report.tsv"
+    VERDICTS = verdicts_name(args.run)
 
     if args.overrides:
         keep = lambda row: row["choice"] == "other"
@@ -196,7 +205,7 @@ def main():
         for setting in args.settings:
             item_id, _, choice = setting.partition("=")
             if choice not in CHOICES[:2]:
-                print(f"{setting}: choice must be etext or ocr", file=sys.stderr)
+                print(f"{setting}: choice must be base or suggester", file=sys.stderr)
                 failed = True
                 continue
             match = re.fullmatch(r"p(\d{4})-\d+", item_id)
@@ -211,18 +220,18 @@ def main():
             else:
                 print(f"{item_id} -> {choice} (decided_by: human)")
         if not failed:
-            print("\nre-run scripts/apply.py and scripts/report.py to pick these up")
+            print("\nrun `make report` to pick these up")
         sys.exit(1 if failed else 0)
 
     if not REPORT.exists():
-        sys.exit(f"review.py: {REPORT} not found; run scripts/report.py first")
+        sys.exit(f"review.py: {REPORT} not found; run `make report` first")
 
     only = parse_pages(args.pages)
 
     if args.summary:
         tallied = list(rows(REPORT, only))
         summary(Counter((r["choice"], r["confidence"]) for r in tallied))
-        # A reviewed verdict counts as high/etext like any other, so say how
+        # A reviewed verdict counts as high/base like any other, so say how
         # many of these cells were settled by hand rather than by an agent.
         decided = sum(1 for r in tallied if r.get("decided_by") == "human")
         if decided:
@@ -267,7 +276,7 @@ def main():
         if not interactive:
             continue
 
-        pick = "[e] e-text, [o] ocr" if len(items) == 1 else "[e2] e-text of 2, [o1] ocr of 1"
+        pick = "[b] base, [s] suggester" if len(items) == 1 else "[b2] base of 2, [s1] suggester of 1"
         last = idx == len(pages)
         nxt = "finish" if last else "next page"
         while True:
@@ -278,10 +287,10 @@ def main():
                 reply = None
             if not reply:
                 break
-            choice = {"e": "etext", "o": "ocr"}.get(reply[:1])
+            choice = {"b": "base", "s": "suggester"}.get(reply[:1])
             rest = reply[1:].strip()
             if choice is None or (rest and not rest.isdigit()):
-                print(f"    ? {reply!r} — expected enter, e, o, or e/o with an item number")
+                print(f"    ? {reply!r} — expected enter, b, s, or b/s with an item number")
                 continue
             if rest:
                 pos = int(rest)
@@ -307,8 +316,8 @@ def main():
             break
 
     if changed:
-        print(f"\n{changed} verdict(s) rewritten; re-run scripts/apply.py to "
-              f"regenerate output/")
+        print(f"\n{changed} verdict(s) rewritten; run `make report` to "
+              f"regenerate output/{args.run}/")
 
 
 if __name__ == "__main__":
