@@ -7,9 +7,9 @@
 #   make resolve-gemini-no-vision    # Gemini API, whole pages, without it
 #   make review                      # or review-summary
 #
-# Every target takes PAGES=3-5 to work on just those pages, and every
-# resolve* target LANGUAGE=Latin for texts not in Sanskrit.
-# The Gemini run needs litellm: PYTHON=path/to/python-with-litellm.
+# Every target takes PAGES=3-5 to work on just those pages.
+# resolve-claude-no-vision takes LANGUAGE=Latin for texts not in Sanskrit;
+# the other two runs use their original prompts, which name Sanskrit.
 
 PYTHON  ?= python3
 PAGES   ?=
@@ -25,7 +25,6 @@ COMBO := $(BACKEND)-$(UNIT)-$(VISION)
 BUILT := claude-item-yes claude-item-no gemini-page-no
 pages_flag  = $(if $(PAGES),--pages $(PAGES))
 pages_words = $(if $(PAGES), Only pages $(PAGES).)
-lang_flag   = $(if $(LANGUAGE),--language "$(LANGUAGE)")
 lang_words  = $(if $(LANGUAGE), The texts are in $(LANGUAGE).)
 
 .PHONY: init prep-pending resolve resolve-claude-no-vision resolve-gemini-no-vision \
@@ -56,14 +55,14 @@ resolve-gemini-no-vision:
 
 resolve-claude-item-yes:
 	$(PYTHON) scripts/images.py extract
-	claude "Adjudicate the pending pages using subagents, following agents/dispatcher.md, for the run claude-vision.$(lang_words)$(pages_words)"
+	claude "Adjudicate the pending pages using subagents, following agents/dispatcher.md, for the run claude-vision.$(pages_words)"
 
 resolve-claude-item-no:
 	claude "Adjudicate the pending pages using subagents, following agents/dispatcher.md, for the run claude-no-vision.$(lang_words)$(pages_words)"
 
 resolve-gemini-page-no:
 	$(PYTHON) scripts/merge.py prep $(pages_flag)
-	$(PYTHON) scripts/merge.py gemini --model $(MODEL) $(lang_flag) $(pages_flag)
+	$(PYTHON) scripts/merge.py gemini --model $(MODEL) $(pages_flag)
 
 # What a finished run leaves behind, in output/<run>/. Page images are
 # removed afterwards; review brings them back.

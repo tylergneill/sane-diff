@@ -1,18 +1,40 @@
 # sane-diff
 
-Reconciles two page-aligned transcriptions of the same text —
-Sanskrit by default, or any other language —
-one page at a time, with a language model doing the reading.
+Reconciles two page-aligned transcriptions of the same text, one page at a
+time, with a language model reading both, and the page images too if you
+like. Language-agnostic, with Sanskrit as a default.
 
-The two inputs have fixed roles. The **base** is the text whose readings are
-kept by default: usually the one readers already trust, such as a human-made
-e-text. The **suggester** is a second transcription that proposes changes to
-it. Either one can be OCR, a hand transcription, or another model's output.
-What each one actually is goes in `input/notes.md`, and every model is shown
-it.
+The **base** is the text whose readings are kept by default, usually the one
+readers already trust. The **suggester** is a second transcription that
+proposes changes to it. These can be OCR, a hand transcription, another
+model's output, or anything in between. Both texts must carry the same page 
+markers, `<p.12>` or `=== 12 ===` (detected per file).
 
-Both texts must carry the same page markers, `<p.12>` or `=== 12 ===` (either
-works, detected per file), and the same lines within each page.
+Each page is seen in isolation from every other. General prompts are set in 
+`agents/` and shown equally to every inference call or agent. The LLM can 
+issue decisions either on the level of individual diff items, or it can 
+rewrite the whole page.
+
+Currently supported:
+- LLM backends Claude subscription or Gemini API
+- Visual reference to PDF (Claude only)
+- Item-specific instructions in `input/notes.md` (Claude only)
+- API cost reporting (Gemini only)
+
+## Install
+
+| what | how | needed for |
+|---|---|---|
+| Python 3.9+ (tested on 3.11) | on macOS already, or `brew install python` | everything |
+| `make` | `xcode-select --install` | everything |
+| poppler | `brew install poppler` | extracting page images |
+| litellm, tqdm | `pip install -r requirements.txt` | the Gemini run; progress bars (optional) |
+| Claude Code | [claude.com/claude-code](https://claude.com/claude-code), then run `claude` once to log in (Max plan or higher recommended; see below) | the Claude runs |
+| Gemini API key | `GEMINI_API_KEY=...` in `.env` at the repo root (gitignored), or in your environment | the Gemini run |
+| meld | `brew install --cask meld` | optional: reading output against the base |
+
+Everything else is Python standard library. `make review` opens images with
+macOS `open`.
 
 ## Run
 
@@ -23,87 +45,73 @@ make resolve
 make review
 ```
 
-Every target takes `PAGES=3-5` to work on just those pages. Every `resolve*`
-target takes `LANGUAGE=Latin` (or any language) for texts not in Sanskrit;
-the prompts name it wherever they speak of the text. The default is the
-`LANGUAGE` line in `scripts/common.py`.
+| target | what it does | output |
+|---|---|---|
+| `init` | clears `input/` (except `notes.md`), `tmp/` and `output/`, asking first if the last two hold anything, then copies in the files. `IMAGE` is optional; without it only no-vision runs work. | |
+| `prep-pending` | finds every disagreement, page by page, and lists pages still to resolve | |
+| `resolve` | Claude sub-agents settle each disagreement, looking at the page image | `output/claude-vision/` |
+| `resolve-claude-no-vision` | the same, from the texts and notes only | `output/claude-no-vision/` |
+| `resolve-gemini-no-vision` | the Gemini API rewrites each page whole, as the old notebook did | `output/gemini-no-vision/` |
+| `review` | walks a Claude run's questionable verdicts, opening each page image | |
+| `review-summary` | counts a Claude run's verdicts by source and confidence | |
 
-| target | what it does |
-|---|---|
-| `init` | clears `input/` (except `notes.md`), `tmp/` and `output/`, asking first if the last two hold anything, then copies the three files in as `input/base.txt`, `suggester.txt` and `image.pdf`. `IMAGE` is optional; without it only the no-vision runs work. |
-| `prep-pending` | finds every disagreement between the two texts, page by page, and lists the pages still to resolve |
-| `resolve` | Claude sub-agents settle each disagreement, looking at the page image |
-| `resolve-claude-no-vision` | the same, from the two texts and the notes only |
-| `resolve-gemini-no-vision` | the Gemini API rewrites each page whole from the two texts, as the old notebook did |
-| `review` | walks the questionable verdicts of a Claude run, opening each page image |
-| `review-summary` | counts a Claude run's verdicts by source and confidence |
+Every target takes `PAGES=3-5`. `resolve-claude-no-vision` takes
+`LANGUAGE=Latin` (or any language; the default is the `LANGUAGE` line in
+`scripts/common.py`). The other two targets use their original prompts,
+`agents/claude-adjudicator.md` and `agents/gemini-harmonizer.md`, unchanged,
+and those name Sanskrit themselves.
+For the no-vision Claude run, pass `VISION=no` to `review`.
 
-Each `resolve` target writes its report when it finishes, into its own folder,
-so the runs can be compared:
+Each `resolve*` writes its report when it finishes, then deletes the page
+images, the bulk of `tmp/`; `review` extracts them again (fast).
 
-| run | output |
-|---|---|
-| `resolve` | `output/claude-vision/` |
-| `resolve-claude-no-vision` | `output/claude-no-vision/` |
-| `resolve-gemini-no-vision` | `output/gemini-no-vision/gemini-2.5-flash.txt` |
-
-It then deletes the page images, which are the bulk of `tmp/`. `review` and
-`review-summary` extract them again. For the no-vision Claude run, pass
-`VISION=no` to either.
-
-These are three points on three axes, which is why they are named as they
-are:
+The `resolve*` targets differ along three axes:
 
 | axis | values |
 |---|---|
 | backend | Claude sub-agents (on your subscription) · Gemini API |
-| unit | `item`: the model decides each disagreement, and a script applies its answers to the base · `page`: the model rewrites the whole page |
+| unit | `item`: the model decides each disagreement and a script applies its answers · `page`: the model rewrites the whole page |
 | vision | the model sees the page image, or not |
 
-The Claude runs start Claude Code as `claude "<prompt>"`; it fans out one
-sub-agent per page, following `agents/dispatcher.md`, and `make` writes the
-report when you leave the session. An interrupted run resumes where it
-stopped: finished pages drop off the pending list.
+A Claude run starts Claude Code as `claude "<prompt>"`, which fans out one
+sub-agent per page following `agents/dispatcher.md`; `make` writes the report
+when you leave the session. An interrupted run resumes where it stopped.
 
-Image extraction needs `poppler` (brew-install it). `pip install tqdm` gets
-you progress bars instead of a plain counter.
+**Claude runs are token-hungry.** Each page gets a fresh sub-agent, and in
+a vision run each one reads a full page image. A whole book uses a lot of
+your subscription, so these runs are recommended only on a Max plan or
+higher. Try `PAGES=1-3` first to see what a page costs you.
 
 ## Gemini
 
-`resolve-gemini-no-vision` needs `litellm`. Point `PYTHON` at an environment
-that has it, e.g. `make resolve-gemini-no-vision PYTHON=~/venvs/ai-apis-311/bin/python`.
-The API key is read from `GEMINI_API_KEY`, or from a `.env` file at the repo
-root holding a `GEMINI_API_KEY=...` line. `.env` is gitignored.
-
-Every billed response is logged in `tmp/usage/gemini-2.5-flash.jsonl`,
-including failed ones, since those are billed too. Each entry holds the usage
-as reported, the price applied and the resulting cost. The report prints the
-running total:
+Every billed response, failed ones included, is logged in
+`tmp/usage/gemini-2.5-flash.jsonl` with its usage, price and cost. The report
+prints the running total:
 
 ```
 label             pages  calls  failed  prompt tok  output tok  thought tok  cost USD
 gemini-2.5-flash      2      2       0       1,733         425        5,639    0.0157
 ```
 
-Cost is prompt tokens at the input rate plus visible output and thinking at
-the output rate, as Google bills them. The rates live in `PRICES` in
-`scripts/gemini.py`, dated. Keep them current. A model with no price there is
-refused rather than recorded at $0. The ledger lives in `tmp/`, so `make init`
-deletes it along with everything else there, after asking.
+Prompt tokens are charged at the input rate; visible output and thinking at
+the output rate, as Google bills them. The rates are in `PRICES` in
+`scripts/gemini.py`, dated; keep them current. A model with no price is
+refused rather than recorded at $0. `make init` deletes the ledger with the
+rest of `tmp/`, after asking.
 
-The prompt is `agents/merger.md` plus `input/notes.md`. To see exactly what
-is sent for page 12: `python3 scripts/merge.py prompt 12`.
-`examples/notes.merge-hyp.md` holds the project-specific half of the old
-notebook's prompt; copy it to `input/notes.md` to reproduce that prompt.
+The prompt is `agents/gemini-harmonizer.md`, the old notebook's, with the two
+pages filled in; it does not use `input/notes.md`. `python3 scripts/merge.py
+prompt 12` prints exactly what page 12 is sent.
 
 ## Review
+
+Output should be inspected directly with a good diff tool like [Meld](https://meld.en.softonic.com/)
 
 ```sh
 meld input/base.txt output/claude-vision/corrected.txt
 ```
 
-Use `output/claude-vision/corrected.marked.txt` instead to see each change with
-its verdict:
+`corrected.marked.txt` shows each change with its verdict:
 
 | mark | |
 |---|---|
@@ -112,69 +120,41 @@ its verdict:
 | `{!}` | agent override — neither candidate |
 | `{~}` `{?}` | medium / low confidence, combined (`{+~}`, `{!?}`) |
 
-`make review` groups the low- and medium-confidence verdicts by page, prints
-the base, the suggester and the adjudicated reading with the agent's note, and
-opens each page image as it goes. The image opens without raising the viewer,
-so the keyboard stays with the prompt; put the viewer window where you can see
-it before you start.
+This same markup in `corrected.marked.txt` is consumed by sane-diff's own
+review system: `make review` opens a CLI interface that walks the low- and 
+medium-confidence verdicts page by page, showing the base, the suggester, 
+the reading and the agent's note, and opens each page image without raising 
+the viewer (so place the image viewer window where you want it first).
+High-confidence verdicts are never shown. For narrower
+walks, `scripts/review.py --overrides` shows only `other` verdicts, and
+`--low` only low-confidence ones.
 
-High-confidence verdicts are never shown — they are the bulk of any run, and
-reviewing them is reviewing the whole text. For narrower walks, run
-`scripts/review.py` directly: `--overrides` shows only `other` verdicts, the
-only ones that can put a reading into the output that neither source
-contains, and `--low` only the low-confidence ones.
+Between pages, `b` or `s` rewrites a verdict to the base or the suggester
+(`b3` for item 3 on a page with several), saving at once. It becomes
+`decided_by: human` at `high` confidence and drops out of later walks. Run
+`make report` afterwards to update `output/`.
 
-The prompt between pages takes a choice as well as `enter`:
+`scripts/review.py --set p0002-002=suggester` settles one named item without
+walking. For a reading neither source has, edit the page's verdict file:
+`choice` to `other`, and the `reading` yourself. Don't edit `corrected.txt`;
+the report regenerates it.
 
-```
-[enter] next page, [b] base, [s] suggester, [ctrl-c] stop
-```
-
-`b` or `s` rewrites that verdict to the named source straight away, so `ctrl-c`
-keeps whatever you have already decided. Where a page holds several items they
-are numbered, and the choice takes the number with it — `b3` picks the base
-for item 3. A verdict decided this way is recorded as `decided_by: human` at
-`high` confidence and drops out of later walks. Run `make report` afterwards
-to fold the changes into `output/`.
-
-`scripts/review.py --set p0002-002=suggester` does the same for one named item
-without walking, at any confidence. You can also edit a page's verdict file by
-hand, which is the only route for a reading neither source got right — set
-`choice` to `other` and write the `reading` yourself. Editing `corrected.txt`
-directly works only if you are done for good: the report regenerates it from
-the verdicts.
-
-The reports behind it: `report.flagged.tsv` holds the overrides and
-low-confidence readings, `report.tsv` every item with its note, and
-`report.json` the same plus totals. The line number they cite counts lines in
-the base, blank lines included, so it runs ahead of the printed line count on
-the page — use it to get near the right spot, then match on the text.
+`report.flagged.tsv` lists the overrides and low-confidence readings,
+`report.tsv` every item, `report.json` the same plus totals.
 
 ## How the item unit decides
 
-The aim is to cut down manual work, not to remove it. Most differences between
-the base and the suggester are easy to settle: a mark one of them dropped, a
-typo. Those are settled automatically. The hard cases — broken type, ambiguous
-conjuncts, readings that depend on knowing the text — are left for you, marked
-low confidence.
-
-The base is the default. The agent adopts the suggester's reading when the
-evidence points to it, at whatever confidence it actually has. It proposes a
-reading of its own (`other`, never above medium confidence) only when neither
-source can be right. Leaving the hard cases for you is deliberate: a wrong
-correction looks like every other change once it is in the output, so it is
-hard to find and hard to undo, while an open item costs a minute of review.
-
-Every verdict is applied regardless of confidence; confidence controls the mark
-only. The design reasoning is in `docs/adjudicate-spec.md`.
+Most disagreements are easy — a dropped mark, a typo — and are settled
+automatically. The hard ones are left for you at low confidence. The base is
+the default: the agent adopts the suggester's reading when the evidence
+points to it, and proposes its own (`other`, at most medium confidence) only
+when neither can be right. A wrong correction is hard to find once applied,
+while an open item costs a minute of review. Every verdict is applied;
+confidence only sets the mark. The reasoning is in `docs/adjudicate-spec.md`.
 
 ## Starting over
 
-`make init` starts a new text. To redo one run on the same text, delete its
-verdict files, `tmp/pages/*/verdicts.claude-vision.json` (or
-`claude-no-vision`), or for Gemini the files in `tmp/pages/*/merged/`, and
-resolve again. To redo one page, delete just that page's file.
-
-After changing how `prep.py` cuts items, start from a clean `tmp/`: verdicts
-are keyed to item ids that renumber, and a stale verdict applies to the wrong
-item silently.
+`make init` starts a new text. To redo a run, delete its verdict files
+(`tmp/pages/*/verdicts.json`, or `verdicts.claude-no-vision.json`), or for
+Gemini `tmp/pages/*/merged/`, and resolve again; for one page, delete just
+its file.

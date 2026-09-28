@@ -5,7 +5,7 @@ for one of two runs. You do not adjudicate anything yourself.
 
 | run | sub-agent prompt | each sub-agent writes |
 |---|---|---|
-| `claude-vision` | `agents/adjudicator.md` | `verdicts.claude-vision.json` |
+| `claude-vision` | `agents/claude-adjudicator.md` | `verdicts.json` |
 | `claude-no-vision` | `agents/adjudicator-no-vision.md` | `verdicts.claude-no-vision.json` |
 
 The user's request names the run, and may name the language of the texts.

@@ -51,12 +51,12 @@ repo/
     review.py        walks flagged verdicts against the scan
   agents/
     dispatcher.md    fan-out prompt
-    adjudicator.md   sub-agent prompt
+    claude-adjudicator.md   sub-agent prompt
   tmp/pages/
     0001/
       page.jpg
       diffs.json
-      verdicts.claude-vision.json  (written by the sub-agent)
+      verdicts.json  (written by the sub-agent)
     0002/
     ...
   output/claude-vision/corrected.txt          the deliverable
@@ -141,7 +141,7 @@ No page images side by side. The reviewer is expected to have the PDF open in it
 
 ## The sub-agent prompt
 
-The prompt in `agents/adjudicator.md` should establish, in roughly this order:
+The prompt in `agents/claude-adjudicator.md` should establish, in roughly this order:
 
 - What the page is, and what the agent is. The page image is what the edition
   says, but the agent reading it is doing OCR on a compressed scan, as the OCR

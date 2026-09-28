@@ -21,7 +21,8 @@ import re
 import sys
 from pathlib import Path
 
-from common import PAGES, add_run_arg, marker_regex, resolve_marker, verdicts_name
+from common import (PAGES, add_run_arg, choice_of, load_items, marker_regex, resolve_marker,
+                    verdicts_name)
 
 # Marked-file annotations. `other` is distinct from low confidence: it is the
 # agent asserting a reading neither source proposed, not a weak nod to one.
@@ -86,8 +87,7 @@ def load_verdicts(work, run):
         verdicts_path = page_dir / verdicts_name(run)
         if not diffs_path.exists() or not verdicts_path.exists():
             continue
-        diffs = json.loads(diffs_path.read_text(encoding="utf-8"))
-        items = {i["id"]: i for i in diffs["items"]}
+        items = {i["id"]: i for i in load_items(diffs_path)}
         try:
             verdicts = json.loads(verdicts_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
@@ -97,7 +97,7 @@ def load_verdicts(work, run):
             item = items.get(v.get("id"))
             if item is None:
                 continue
-            choice = v.get("choice", "")
+            choice = choice_of(v)
             reading = v.get("reading")
             if reading is None:
                 reading = item.get(choice, "") if choice in ("base", "suggester") else ""

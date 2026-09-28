@@ -42,7 +42,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from common import PAGES as PAGES_DIR, add_run_arg, verdicts_name
+from common import PAGES as PAGES_DIR, add_run_arg, load_items, verdicts_name
 
 # Set from --run in main(); review works on one run at a time.
 REPORT = None
@@ -123,8 +123,7 @@ def override(page, item_id, choice):
     if not verdicts_path.exists() or not diffs_path.exists():
         return f"page {page}: {VERDICTS} or diffs.json missing"
 
-    diffs = json.loads(diffs_path.read_text(encoding="utf-8"))
-    item = next((i for i in diffs["items"] if i["id"] == item_id), None)
+    item = next((i for i in load_items(diffs_path) if i["id"] == item_id), None)
     if item is None:
         return f"{item_id}: not in diffs.json"
     reading = item.get(choice, "")

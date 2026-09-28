@@ -6,6 +6,7 @@ changes to it. Neither has to be OCR. What each one actually is belongs in
 input/notes.md, not in the code.
 """
 
+import json
 import re
 import sys
 
@@ -46,7 +47,31 @@ DEFAULT_RUN = "claude-vision"
 
 
 def verdicts_name(run):
-    return f"verdicts.{run}.json"
+    # claude-vision keeps the original name, which its prompt tells the agent to write.
+    return "verdicts.json" if run == "claude-vision" else f"verdicts.{run}.json"
+
+
+# The claude-vision prompt, agents/claude-adjudicator.md, is the original one
+# verbatim. It reads a diffs.json item's two readings as `etext` and `ocr`,
+# and answers with those names, so diffs.json keeps them on disk: the agent
+# sees exactly what it always saw. The code reads them as base and suggester.
+ITEM_KEYS = {"base": "etext", "suggester": "ocr"}
+CHOICE_ALIASES = {"etext": "base", "ocr": "suggester"}
+
+
+def load_items(diffs_path):
+    """A page's diff items, each with `base` and `suggester` readings added."""
+    items = json.loads(diffs_path.read_text(encoding="utf-8"))["items"]
+    for item in items:
+        for role, key in ITEM_KEYS.items():
+            item[role] = item.get(key, "")
+    return items
+
+
+def choice_of(verdict):
+    """A verdict's choice as base / suggester / other, whichever names it used."""
+    choice = verdict.get("choice", "")
+    return CHOICE_ALIASES.get(choice, choice)
 
 
 def add_run_arg(ap):
@@ -110,7 +135,7 @@ class _Counter:
             print(f"\r{self.desc}: {self.n}/{self.total} {self.postfix}", end="",
                   file=sys.stderr, flush=True)
 
-    def set_postfix_str(self, text):
+    def set_postfix_str(self, text, refresh=True):
         self.postfix = text
 
     def close(self):

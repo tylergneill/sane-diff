@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-from common import PAGES, add_run_arg, verdicts_name
+from common import PAGES, add_run_arg, choice_of, load_items, verdicts_name
 
 COLUMNS = ["page", "line", "id", "base", "suggester", "reading", "choice", "confidence",
            "decided_by", "note"]
@@ -36,8 +36,7 @@ def load_page(page_dir, run, problems):
         problems.append(f"{page_dir.name}: no {verdicts_path.name} yet")
         return []
 
-    diffs = json.loads(diffs_path.read_text(encoding="utf-8"))
-    items = {item["id"]: item for item in diffs["items"]}
+    items = {item["id"]: item for item in load_items(diffs_path)}
 
     try:
         verdicts = json.loads(verdicts_path.read_text(encoding="utf-8"))
@@ -58,7 +57,7 @@ def load_page(page_dir, run, problems):
             continue
         seen.add(vid)
 
-        choice = verdict.get("choice", "")
+        choice = choice_of(verdict)
         if choice not in CHOICES:
             problems.append(f"{page_dir.name}: {vid} has unknown choice {choice!r}")
         confidence = verdict.get("confidence", "")

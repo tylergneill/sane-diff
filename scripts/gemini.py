@@ -219,7 +219,7 @@ def generate(model, prompt, *, key, temperature, max_output_tokens, timeout=600)
     try:
         r = litellm.completion(
             model=litellm_model(model),
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": [{"type": "text", "text": prompt}]}],
             max_tokens=max_output_tokens,
             temperature=temperature,
             api_key=key,

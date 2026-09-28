@@ -93,8 +93,8 @@ def page_diffs(page_no, blines, slines):
                         "line": lineno,
                         "word_index": widx,
                         "word_span": wspan,
-                        "base": bword,
-                        "suggester": sword,
+                        "etext": bword,  # the base; see ITEM_KEYS in common.py
+                        "ocr": sword,    # the suggester
                         "context": bline if bline else sline,
                     }
                 )

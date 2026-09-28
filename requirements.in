@@ -1,0 +1,9 @@
+# Not pip-installable, but required: poppler, for extracting page images
+# from input/image.pdf (prep.py and images.py call its `pdfimages`).
+#   brew install poppler
+
+# Gemini API runs (make resolve-gemini-no-vision)
+litellm
+
+# Optional: progress bars instead of a plain counter
+tqdm

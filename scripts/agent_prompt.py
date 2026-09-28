@@ -17,7 +17,7 @@ from common import DEFAULT_RUN, add_language_arg, fill_language
 
 AGENTS = Path(__file__).resolve().parent.parent / "agents"
 PROMPTS = {
-    "claude-vision": AGENTS / "adjudicator.md",
+    "claude-vision": AGENTS / "claude-adjudicator.md",
     "claude-no-vision": AGENTS / "adjudicator-no-vision.md",
 }
 

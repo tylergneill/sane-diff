@@ -27,6 +27,7 @@ Subcommands:
 import argparse
 import difflib
 import json
+import math
 import sys
 import threading
 import time
@@ -37,17 +38,27 @@ from pathlib import Path
 from statistics import median
 
 import gemini
-from common import ROLES, WORK, add_language_arg, fill_language, marker_regex, parse_page_selection, resolve_marker, split_pages, tqdm
+from common import ROLES, WORK, marker_regex, parse_page_selection, resolve_marker, split_pages, tqdm
 
 REPO = Path(__file__).resolve().parent.parent
-INSTRUCTIONS = REPO / "agents" / "merger.md"
+# The notebook's prompt, verbatim: two {} slots, filled with the base's page
+# and then the suggester's by str.format, exactly as the notebook did it.
+PROMPT = REPO / "agents" / "gemini-harmonizer.md"
 
-# Output-budget estimate carried over from the notebook: visible tokens per
-# input character, times a generous allowance for thinking, plus a buffer. It
-# only sets the first attempt's cap; a page that runs out is retried at double.
-CHAR_TO_VISIBLE_TOK = 0.9
-COMPLETION_PER_VISIBLE = 8.5
+# Output-budget estimate, the notebook's: visible tokens per character of the
+# base's page, times a generous allowance for thinking, plus a buffer. It sets
+# the first attempt's cap; a page that runs out is retried at double.
+CHAR_TO_VISIBLE_TEXT_TOK = 0.9
+COMPLETION_PER_VISIBLE_TEXT = 8.5
 BUFFER = 1.2
+
+
+def estimate_max_output_tokens(base_text):
+    # The same operations in the same order as the notebook, so the float
+    # rounds the same way and the request carries the same maxOutputTokens.
+    visible_text_tokens_est = len(base_text) * CHAR_TO_VISIBLE_TEXT_TOK
+    completion_tokens_est = visible_text_tokens_est * COMPLETION_PER_VISIBLE_TEXT
+    return int(math.ceil(completion_tokens_est * BUFFER))
 
 
 def die(msg):
@@ -141,19 +152,6 @@ def cmd_prep(args):
         for role in ROLES:
             (d / f"{role}.txt").write_text(_page_body(texts[role][n]), encoding="utf-8")
 
-    # A snapshot, not a link: every backend that works from this directory
-    # then gets the same notes, even if input/notes.md is edited mid-run.
-    notes_dest = args.work / "notes.md"
-    old_notes = notes_dest.read_text(encoding="utf-8") if notes_dest.exists() else None
-    new_notes = args.notes.read_text(encoding="utf-8") if args.notes and args.notes.exists() else None
-    if new_notes is not None:
-        notes_dest.write_text(new_notes, encoding="utf-8")
-    elif notes_dest.exists():
-        notes_dest.unlink()
-    if old_notes != new_notes and any(pages_root.glob("*/merged/*.txt")):
-        print("merge.py: warning: the notes changed, so pages merged before now were "
-              "prompted differently from pages merged after", file=sys.stderr)
-
     manifest_path = args.work / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
     manifest.setdefault("markers", {}).update({str(n): markers["base"][n] for n in shared})
@@ -162,7 +160,6 @@ def cmd_prep(args):
                              encoding="utf-8")
 
     print(f"pages prepared: {len(shared)}")
-    print(f"notes:          {args.notes if notes_dest.exists() else 'none'}")
     print(f"wrote {pages_root}/")
 
 
@@ -172,15 +169,11 @@ def _page_body(lines):
 
 # --- prompt ------------------------------------------------------------------
 
-def build_prompt(work, page_dir, language):
-    """The whole prompt for one page, identical for every backend."""
-    parts = [fill_language(INSTRUCTIONS.read_text(encoding="utf-8"), language).strip()]
-    notes = work / "notes.md"
-    if notes.exists():
-        parts.append("Notes on these two texts:\n\n" + notes.read_text(encoding="utf-8").strip())
-    parts.append("Text 1 (base):\n\n" + page_text(page_dir, "base").strip())
-    parts.append("Text 2 (suggester):\n\n" + page_text(page_dir, "suggester").strip())
-    return "\n\n".join(parts) + "\n"
+def build_prompt(page_dir):
+    """The whole prompt for one page. No notes and no language: the prompt
+    carries its own, as it did in the notebook."""
+    return PROMPT.read_text(encoding="utf-8").format(
+        page_text(page_dir, "base").strip(), page_text(page_dir, "suggester").strip())
 
 
 def resolve_page(work, spec):
@@ -196,10 +189,7 @@ def resolve_page(work, spec):
 
 
 def cmd_prompt(args):
-    page_dir = resolve_page(args.work, args.page)
-    # When the page is given as a path, notes.md sits two levels above it.
-    work = page_dir.parent.parent if Path(args.page).is_dir() else args.work
-    sys.stdout.write(build_prompt(work, page_dir, args.language))
+    sys.stdout.write(build_prompt(resolve_page(args.work, args.page)))
 
 
 # --- pending -----------------------------------------------------------------
@@ -252,12 +242,32 @@ class Ledger:
             fh.write(line + "\n")
 
 
+class PageFailed(Exception):
+    """A page that could not be merged, carrying what it cost anyway: every
+    billed attempt before the failure is real spend."""
+
+    def __init__(self, message, spent):
+        super().__init__(message)
+        self.spent = spent
+
+
 def merge_one(page_dir, prompt, model, price, key, ledger, run_id, args):
-    """Merge one page, retrying as needed. Returns (text, seconds, cost)."""
-    longest = max(len(page_text(page_dir, r)) for r in ROLES)
+    """Merge one page, retrying as needed. Returns (text, seconds, cost), or
+    raises PageFailed with the cost so far."""
+    spent = [0.0]
+    try:
+        return _merge_one(page_dir, prompt, model, price, key, ledger, run_id, args, spent)
+    except PageFailed:
+        raise
+    except Exception as exc:
+        # e.g. a billed attempt ran out of budget, then the retry hit a rate
+        # limit that never cleared: the first attempt still has to be counted.
+        raise PageFailed(f"{type(exc).__name__}: {exc}", spent[0]) from exc
+
+
+def _merge_one(page_dir, prompt, model, price, key, ledger, run_id, args, spent):
     budget = min(gemini.MAX_OUTPUT_CAP,
-                 int(longest * CHAR_TO_VISIBLE_TOK * COMPLETION_PER_VISIBLE * BUFFER) + 1)
-    spent = 0.0
+                 estimate_max_output_tokens(page_text(page_dir, "base").strip()))
     bad_finishes = 0
     t0 = time.time()
     for attempt in range(1, args.max_retries + 1):
@@ -272,7 +282,7 @@ def merge_one(page_dir, prompt, model, price, key, ledger, run_id, args):
             continue
 
         usd, upper = gemini.cost(r.usage, price)
-        spent += usd
+        spent[0] += usd
         ledger.record({
             "time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "run": run_id,
@@ -293,7 +303,7 @@ def merge_one(page_dir, prompt, model, price, key, ledger, run_id, args):
         })
 
         if r.finish_reason == "stop" and r.text.strip():
-            return r.text, time.time() - t0, spent
+            return r.text, time.time() - t0, spent[0]
         if r.finish_reason == "length" and budget < gemini.MAX_OUTPUT_CAP:
             # Usually thinking ate the budget before the answer was done.
             budget = min(gemini.MAX_OUTPUT_CAP, budget * 2)
@@ -301,8 +311,8 @@ def merge_one(page_dir, prompt, model, price, key, ledger, run_id, args):
         bad_finishes += 1
         if bad_finishes >= 2:
             break
-    raise RuntimeError(f"gave up after attempt {attempt}: finish_reason {r.finish_reason}"
-                       f" (${spent:.4f} spent on this page)")
+    raise PageFailed(f"gave up after attempt {attempt}: finish_reason {r.finish_reason}",
+                     spent[0])
 
 
 def cmd_gemini(args):
@@ -335,7 +345,7 @@ def cmd_gemini(args):
         with ThreadPoolExecutor(max_workers=args.workers) as ex, \
                 tqdm(total=len(todo), desc=label, unit="page") as bar:
             futures = {
-                ex.submit(merge_one, d, build_prompt(args.work, d, args.language), model, price, key,
+                ex.submit(merge_one, d, build_prompt(d), model, price, key,
                           ledger, run_id, args): d
                 for d in todo
             }
@@ -347,20 +357,24 @@ def cmd_gemini(args):
                     done += 1
                     secs.append(dt)
                     run_cost += usd
-                except Exception as exc:  # report every page, keep going
-                    errors[int(d.name)] = str(exc)
-                bar.update(1)
+                except PageFailed as exc:  # report every page, keep going
+                    errors[int(d.name)] = f"{exc} (${exc.spent:.4f} spent on this page)"
+                    run_cost += exc.spent
                 post = f"ok={done} err={len(errors)} cost=${run_cost:.4f}"
                 if secs:
                     post += f" med={median(secs):.1f}s"
-                bar.set_postfix_str(post)
+                bar.set_postfix_str(post, refresh=False)
+                bar.update(1)
 
-        # Failed pages cost money too; the ledger has them, run_cost does not.
-        run_total = sum(e["cost_usd"] for e in read_ledger(ledger.path) if e["run"] == run_id)
+        # The ledger is the authority; the bar's running figure should agree
+        # with it. Failed attempts include the first tries of pages that
+        # later succeeded, e.g. one that ran out of budget and was retried.
+        entries = [e for e in read_ledger(ledger.path) if e["run"] == run_id]
+        run_total = sum(e["cost_usd"] for e in entries)
+        wasted = sum(e["cost_usd"] for e in entries if e["finish_reason"].lower() != "stop")
         print(f"{label}: {done} merged, {len(errors)} failed, {time.time() - t_start:.1f}s")
         print(f"  cost this run: ${run_total:.4f}"
-              + (f" (of which ${run_total - run_cost:.4f} on failed attempts)"
-                 if run_total - run_cost > 5e-7 else ""))
+              + (f" (of which ${wasted:.4f} on failed attempts)" if wasted > 5e-7 else ""))
         for page, msg in sorted(errors.items()):
             print(f"  page {page}: {msg}", file=sys.stderr)
         failed_any = failed_any or bool(errors)
@@ -516,8 +530,6 @@ def main():
     p = sub.add_parser("prep", help="split the inputs into per-page directories")
     p.add_argument("--base", default=Path("input/base.txt"), type=Path)
     p.add_argument("--suggester", default=Path("input/suggester.txt"), type=Path)
-    p.add_argument("--notes", default=Path("input/notes.md"), type=Path,
-                   help="optional notes passed to every backend (default: input/notes.md)")
     p.add_argument("--marker", default="auto", type=marker_regex,
                    help="page marker: auto (default: <p.12> or === 12 ===, detected per "
                         "file), or a regex whose group 1 is the page number")
@@ -526,7 +538,6 @@ def main():
 
     p = sub.add_parser("prompt", help="print the exact prompt for one page")
     p.add_argument("page", help="a page number, or a page directory")
-    add_language_arg(p)
     p.set_defaults(func=cmd_prompt)
 
     p = sub.add_parser("pending", help="progress per label, or one label's unfinished pages")
@@ -539,7 +550,6 @@ def main():
     p = sub.add_parser("gemini", help="merge pending pages over the Gemini API")
     p.add_argument("--model", action="append", required=True,
                    help="e.g. 2.5-flash; repeat to run several models in turn")
-    add_language_arg(p)
     p.add_argument("--pages")
     p.add_argument("--workers", type=int, default=20)
     p.add_argument("--temperature", type=float, default=0.2)

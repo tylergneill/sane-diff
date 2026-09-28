@@ -78,9 +78,10 @@ written.
 ## Adjudicate only the listed items
 
 `diffs.json` contains an `items` array. Each item has an `id`, a `line`, a
-`word_index`, the `base` reading, the `suggester` reading, and the full base line
-as `context`. An empty string for `base` or `suggester` means that source has
-no word at that position.
+`word_index`, the base reading as `etext`, the suggester's reading as `ocr`
+(whatever the two sources actually are), and the full base line as `context`.
+An empty string for `etext` or `ocr` means that source has no word at that
+position.
 
 Decide exactly these items. One verdict per item, no more and no fewer. Do not
 correct anything else on the page. Do not comment on readings that were not
