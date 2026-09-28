@@ -18,8 +18,12 @@ rewrite the whole page.
 Currently supported:
 - LLM backends Claude subscription or Gemini API
 - Visual reference to PDF (Claude only)
-- Item-specific instructions in `input/notes.md` (Claude only)
+- Text-specific instructions in `input/notes.md` (Claude only)
+- Diff-item-specific review of results (Claude only)
 - API cost reporting (Gemini only)
+
+With vision, keep the transcriptions in the same script as the page images;
+otherwise the model has to transliterate as it reads.
 
 ## Install
 
@@ -33,7 +37,7 @@ Currently supported:
 | Gemini API key | `GEMINI_API_KEY=...` in `.env` at the repo root (gitignored), or in your environment | the Gemini run |
 | meld | `brew install --cask meld` | optional: reading output against the base |
 
-Everything else is Python standard library. `make review` opens images with
+Everything else is Python standard library. `make review-items` opens images with
 macOS `open`.
 
 ## Run
@@ -42,7 +46,7 @@ macOS `open`.
 make init BASE=path/to/base.txt SUGGESTER=path/to/suggester.txt IMAGE=path/to/image.pdf
 make prep-pending
 make resolve
-make review
+make review-items
 ```
 
 | target | what it does | output |
@@ -52,18 +56,18 @@ make review
 | `resolve` | Claude sub-agents settle each disagreement, looking at the page image | `output/claude-vision/` |
 | `resolve-claude-no-vision` | the same, from the texts and notes only | `output/claude-no-vision/` |
 | `resolve-gemini-no-vision` | the Gemini API rewrites each page whole, as the old notebook did | `output/gemini-no-vision/` |
-| `review` | walks a Claude run's questionable verdicts, opening each page image | |
-| `review-summary` | counts a Claude run's verdicts by source and confidence | |
+| `review-items` | walks the `resolve` run's questionable verdicts, opening each page image | |
+| `review-items-summary` | counts the `resolve` run's verdicts by source and confidence | |
+| `review-items-no-vision`, `review-items-no-vision-summary` | the same for `resolve-claude-no-vision` | |
 
 Every target takes `PAGES=3-5`. `resolve-claude-no-vision` takes
 `LANGUAGE=Latin` (or any language; the default is the `LANGUAGE` line in
 `scripts/common.py`). The other two targets use their original prompts,
 `agents/claude-adjudicator.md` and `agents/gemini-harmonizer.md`, unchanged,
 and those name Sanskrit themselves.
-For the no-vision Claude run, pass `VISION=no` to `review`.
 
 Each `resolve*` writes its report when it finishes, then deletes the page
-images, the bulk of `tmp/`; `review` extracts them again (fast).
+images, the bulk of `tmp/`; the `review-items*` targets extract them again (fast).
 
 The `resolve*` targets differ along three axes:
 
@@ -74,8 +78,8 @@ The `resolve*` targets differ along three axes:
 | vision | the model sees the page image, or not |
 
 A Claude run starts Claude Code as `claude "<prompt>"`, which fans out one
-sub-agent per page following `agents/dispatcher.md`; `make` writes the report
-when you leave the session. An interrupted run resumes where it stopped.
+sub-agent per page following `agents/dispatcher.md` and writes the report
+when every page is done. An interrupted run resumes where it stopped.
 
 **Claude runs are token-hungry.** Each page gets a fresh sub-agent, and in
 a vision run each one reads a full page image. A whole book uses a lot of
@@ -121,7 +125,7 @@ meld input/base.txt output/claude-vision/corrected.txt
 | `{~}` `{?}` | medium / low confidence, combined (`{+~}`, `{!?}`) |
 
 This same markup in `corrected.marked.txt` is consumed by sane-diff's own
-review system: `make review` opens a CLI interface that walks the low- and 
+review system: `make review-items` opens a CLI interface that walks the low- and 
 medium-confidence verdicts page by page, showing the base, the suggester, 
 the reading and the agent's note, and opens each page image without raising 
 the viewer (so place the image viewer window where you want it first).

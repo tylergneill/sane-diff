@@ -5,7 +5,8 @@
 #   make resolve                     # Claude, per item, with the page image
 #   make resolve-claude-no-vision    # Claude, per item, without it
 #   make resolve-gemini-no-vision    # Gemini API, whole pages, without it
-#   make review                      # or review-summary
+#   make review-items                # or review-items-summary, and the same
+#                                    # for the no-vision run
 #
 # Every target takes PAGES=3-5 to work on just those pages.
 # resolve-claude-no-vision takes LANGUAGE=Latin for texts not in Sanskrit;
@@ -28,7 +29,8 @@ pages_words = $(if $(PAGES), Only pages $(PAGES).)
 lang_words  = $(if $(LANGUAGE), The texts are in $(LANGUAGE).)
 
 .PHONY: init prep-pending resolve resolve-claude-no-vision resolve-gemini-no-vision \
-        report review review-summary
+        report review-items review-items-summary review-items-no-vision \
+        review-items-no-vision-summary
 
 init:
 	$(if $(BASE),,$(error BASE= is required))
@@ -76,10 +78,20 @@ else
 endif
 	$(PYTHON) scripts/images.py clean
 
-review:
+# Per-item review of the two Claude runs. The Gemini run rewrites whole
+# pages, so it has no per-item verdicts to review; read it in meld.
+review-items:
 	$(PYTHON) scripts/images.py extract
-	$(PYTHON) scripts/review.py --run $(RUN) $(pages_flag)
+	$(PYTHON) scripts/review.py --run claude-vision $(pages_flag)
 
-review-summary:
+review-items-summary:
 	$(PYTHON) scripts/images.py extract
-	$(PYTHON) scripts/review.py --run $(RUN) --summary $(pages_flag)
+	$(PYTHON) scripts/review.py --run claude-vision --summary $(pages_flag)
+
+review-items-no-vision:
+	$(PYTHON) scripts/images.py extract
+	$(PYTHON) scripts/review.py --run claude-no-vision $(pages_flag)
+
+review-items-no-vision-summary:
+	$(PYTHON) scripts/images.py extract
+	$(PYTHON) scripts/review.py --run claude-no-vision --summary $(pages_flag)

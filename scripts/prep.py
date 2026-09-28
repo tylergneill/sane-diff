@@ -101,8 +101,14 @@ def page_diffs(page_no, blines, slines):
     return items
 
 
+# Resolution for pages that have to be rendered rather than extracted. 200 DPI
+# keeps print legible and is about the largest page image Claude takes in
+# without first scaling it down.
+RENDER_DPI = 200
+
+
 def extract_pages(pdf, outdir, pages):
-    """Extract each wanted page's embedded scan into its page directory.
+    """Put each wanted page's image into its page directory as page.jpg.
 
     A scanned edition stores one image per page, so the page image is already
     in the PDF and nothing needs rendering. pdfimages -j writes the JPEG
@@ -110,13 +116,16 @@ def extract_pages(pdf, outdir, pages):
     and lossless — re-rendering a 200 DPI scan at 300 DPI only interpolates
     pixels that were never scanned.
 
-    Pages whose embedded image is not a single JPEG are reported rather than
-    silently skipped.
+    A page with no single embedded JPEG (a born-digital PDF, or a scan stored
+    some other way) is rendered instead, with pdftoppm at RENDER_DPI. Both
+    tools come with poppler. The count of rendered pages is reported, since
+    those images are made rather than copied.
     """
-    if not shutil.which("pdfimages"):
-        die("pdfimages not found on PATH (install poppler)")
+    for tool in ("pdfimages", "pdftoppm"):
+        if not shutil.which(tool):
+            die(f"{tool} not found on PATH (install poppler)")
 
-    missing = []
+    rendered = []
     for page_no in tqdm(pages, desc="extracting", unit="page"):
         dest = outdir / f"{page_no:04d}"
         dest.mkdir(parents=True, exist_ok=True)
@@ -129,16 +138,19 @@ def extract_pages(pdf, outdir, pages):
         produced = sorted(dest.glob("page-*"))
         if len(produced) == 1 and produced[0].suffix == ".jpg":
             produced[0].rename(dest / "page.jpg")
-        else:
-            for f in produced:
-                f.unlink()
-            missing.append(page_no)
+            continue
+        for f in produced:
+            f.unlink()
+        # -singlefile writes <prefix>.jpg with no page-number suffix.
+        _run(["pdftoppm", "-jpeg", "-r", str(RENDER_DPI), "-f", str(page_no),
+              "-l", str(page_no), "-singlefile", str(pdf), str(prefix)], page_no)
+        rendered.append(page_no)
 
-    if missing:
-        print(f"prep.py: warning: {len(missing)} page(s) had no single embedded "
-              f"JPEG and were left without an image: "
-              f"{', '.join(str(p) for p in missing[:10])}"
-              f"{'...' if len(missing) > 10 else ''}", file=sys.stderr)
+    if rendered:
+        print(f"prep.py: {len(rendered)} page(s) had no single embedded JPEG and were "
+              f"rendered at {RENDER_DPI} DPI instead: "
+              f"{', '.join(str(p) for p in rendered[:10])}"
+              f"{'...' if len(rendered) > 10 else ''}", file=sys.stderr)
 
 
 def _run(cmd, page_no):

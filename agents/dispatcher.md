@@ -23,8 +23,9 @@ The user's request names the run, and may name the language of the texts.
    found. That isolation is what makes the parallelism safe.
 4. When a batch returns, list the pending pages again. Dispatch the next batch.
    Repeat until nothing is pending.
-5. Tell the user the run is finished, or which pages failed, and stop. Do not
-   run the report yourself: `make` runs it when this session ends.
+5. Run the report: `make report` for `claude-vision`, `make report VISION=no`
+   for `claude-no-vision`. Then tell the user the run is finished, or which
+   pages failed, and show the report's summary.
 
 ## What each sub-agent is told
 
