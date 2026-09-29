@@ -82,11 +82,14 @@ else
 	$(PYTHON) scripts/report.py --run $(RUN)
 endif
 
-# finish is how a resolve run ends: the report, then the page images removed,
-# since they are the bulk of tmp/; review brings them back. The Gemini run
-# finishes even if some pages failed, so what did finish is written.
+# finish is how a resolve run ends: the report, then, for the vision run, the
+# page images removed, since they are the bulk of tmp/; review brings them
+# back. Only the vision run extracts the images, so only it cleans them: the
+# images are shared, and a no-vision run finishing alongside it would
+# otherwise delete them mid-run. The Gemini run finishes even if some pages
+# failed, so what did finish is written.
 finish: report
-	$(PYTHON) scripts/images.py clean
+	$(if $(filter yes,$(VISION)),$(PYTHON) scripts/images.py clean)
 
 finish-claude-no-vision:
 	@$(MAKE) --no-print-directory finish VISION=no
