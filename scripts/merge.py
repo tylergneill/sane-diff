@@ -188,6 +188,15 @@ def resolve_page(work, spec):
     die(f"no such page: {spec}")
 
 
+def inputs_agree(page_dir):
+    """True when the base and the suggester give the same page, so there is
+    nothing for a model to settle. Compared as the prompt would carry them."""
+    paths = [page_dir / f"{role}.txt" for role in ROLES]
+    if not all(p.exists() for p in paths):
+        return False
+    return page_text(page_dir, "base").strip() == page_text(page_dir, "suggester").strip()
+
+
 def cmd_prompt(args):
     sys.stdout.write(build_prompt(resolve_page(args.work, args.page)))
 
@@ -332,9 +341,17 @@ def cmd_gemini(args):
     for model in args.model:
         label = f"gemini-{gemini.short_name(model)}"
         price = gemini.price_for(model) or gemini.ModelPrice(0.0, 0.0)
-        todo = [d for d in dirs if not output_path(d, label).exists()]
-        print(f"\n*** {label}: {len(todo)} of {len(dirs)} page(s) to merge ***", flush=True)
-        if not todo:
+        pending = [d for d in dirs if not output_path(d, label).exists()]
+        # A page the two inputs agree on, including one both leave empty, has
+        # nothing to merge: its text goes to the output as it is, without a
+        # call, so the assembled file keeps every page. It still counts as
+        # handled on the progress bar.
+        same = [d for d in pending if inputs_agree(d)]
+        todo = [d for d in pending if d not in same]
+        print(f"\n*** {label}: {len(pending)} of {len(dirs)} page(s) to merge"
+              + (f", {len(same)} of them skipped, the inputs agreeing" if same else "")
+              + " ***", flush=True)
+        if not pending:
             continue
 
         ledger = Ledger(ledger_path(args.work, label))
@@ -343,7 +360,11 @@ def cmd_gemini(args):
         run_cost = 0.0
         t_start = time.time()
         with ThreadPoolExecutor(max_workers=args.workers) as ex, \
-                tqdm(total=len(todo), desc=label, unit="page") as bar:
+                tqdm(total=len(pending), desc=label, unit="page") as bar:
+            for d in same:
+                write_atomic(output_path(d, label), page_text(d, "base").strip() + "\n")
+            bar.set_postfix_str(f"skipped={len(same)}", refresh=False)
+            bar.update(len(same))
             futures = {
                 ex.submit(merge_one, d, build_prompt(d), model, price, key,
                           ledger, run_id, args): d
@@ -360,7 +381,7 @@ def cmd_gemini(args):
                 except PageFailed as exc:  # report every page, keep going
                     errors[int(d.name)] = f"{exc} (${exc.spent:.4f} spent on this page)"
                     run_cost += exc.spent
-                post = f"ok={done} err={len(errors)} cost=${run_cost:.4f}"
+                post = f"ok={done} err={len(errors)} skipped={len(same)} cost=${run_cost:.4f}"
                 if secs:
                     post += f" med={median(secs):.1f}s"
                 bar.set_postfix_str(post, refresh=False)
@@ -372,7 +393,8 @@ def cmd_gemini(args):
         entries = [e for e in read_ledger(ledger.path) if e["run"] == run_id]
         run_total = sum(e["cost_usd"] for e in entries)
         wasted = sum(e["cost_usd"] for e in entries if e["finish_reason"].lower() != "stop")
-        print(f"{label}: {done} merged, {len(errors)} failed, {time.time() - t_start:.1f}s")
+        print(f"{label}: {done} merged, {len(same)} skipped, {len(errors)} failed, "
+              f"{time.time() - t_start:.1f}s")
         print(f"  cost this run: ${run_total:.4f}"
               + (f" (of which ${wasted:.4f} on failed attempts)" if wasted > 5e-7 else ""))
         for page, msg in sorted(errors.items()):
