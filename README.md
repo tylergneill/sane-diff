@@ -124,6 +124,10 @@ Output should be inspected directly with a good diff tool like [Meld](https://me
 meld input/base.txt output/claude-vision/corrected.txt
 ```
 
+Pro tip: to make the changed characters stand out in bright yellow (instead of the default pale blue), edit `/Applications/Meld.app/Contents/Resources/share/meld/styles/meld-base.style-scheme.xml` and change the `meld:inline` line to `<style name="meld:inline" background="#ffff00" foreground="#000000"/>`, then restart Meld. A Meld update will replace that file, so you'll have to make the edit again after upgrading.
+
+![Meld with changed characters highlighted in yellow](docs/meld-yellow-hack.png)
+
 `corrected.marked.txt` shows each change with its verdict:
 
 | mark | |
