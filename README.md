@@ -59,6 +59,8 @@ make review-items
 | `review-items` | walks the `resolve` run's questionable verdicts, opening each page image | |
 | `review-items-summary` | counts the `resolve` run's verdicts by source and confidence | |
 | `review-items-no-vision`, `review-items-no-vision-summary` | the same for `resolve-claude-no-vision` | |
+| `report` | rewrites the `resolve` run's output from its verdicts, keeping the page images; `VISION=no` for `resolve-claude-no-vision`. Run it after settling verdicts in review. | `output/<run>/` |
+| `finish`, `finish-claude-no-vision`, `finish-gemini-no-vision` | `report`, then removes the page images. Each run ends with this on its own. | `output/<run>/` |
 
 Every target takes `PAGES=3-5`. `resolve-claude-no-vision` takes
 `LANGUAGE=Latin` (or any language; the default is the `LANGUAGE` line in
@@ -71,8 +73,10 @@ page 1, give `prep-pending` the PDF page index minus the printed number, e.g.
 `PDF_OFFSET=-2` when printed page 3 is the PDF's first page. Later image
 extraction reuses the offset it recorded.
 
-Each `resolve*` writes its report when it finishes, then deletes the page
+Each `resolve*` finishes itself: it writes `output/<run>/`, then deletes the page
 images, the bulk of `tmp/`; the `review-items*` targets extract them again (fast).
+A Claude run finishes inside its Claude session, once no page is left to dispatch;
+if you end the session early, run its `finish` target yourself.
 
 The `resolve*` targets differ along three axes:
 
@@ -83,7 +87,7 @@ The `resolve*` targets differ along three axes:
 | vision | the model sees the page image, or not |
 
 A Claude run starts Claude Code as `claude "<prompt>"`, which fans out one
-sub-agent per page following `agents/dispatcher.md` and writes the report
+sub-agent per page following `agents/dispatcher.md` and finishes the run
 when every page is done. An interrupted run resumes where it stopped.
 
 **Claude runs are token-hungry.** Each page gets a fresh sub-agent, and in
@@ -140,13 +144,17 @@ walks, `scripts/review.py --overrides` shows only `other` verdicts, and
 
 Between pages, `b` or `s` rewrites a verdict to the base or the suggester
 (`b3` for item 3 on a page with several), saving at once. It becomes
-`decided_by: human` at `high` confidence and drops out of later walks. Run
-`make report` afterwards to update `output/`.
+`decided_by: human` at `high` confidence and drops out of later walks.
 
 `scripts/review.py --set p0002-002=suggester` settles one named item without
 walking. For a reading neither source has, edit the page's verdict file:
 `choice` to `other`, and the `reading` yourself. Don't edit `corrected.txt`;
 the report regenerates it.
+
+**Settling verdicts changes only the verdict files.** To see the change in
+`output/`, run `make report` after reviewing the `resolve` run, or
+`make report VISION=no` after reviewing `resolve-claude-no-vision`. The page
+images stay, for another walk.
 
 `report.flagged.tsv` lists the overrides and low-confidence readings,
 `report.tsv` every item, `report.json` the same plus totals.

@@ -46,6 +46,9 @@ from common import PAGES as PAGES_DIR, add_run_arg, load_items, verdicts_name
 
 # Set from --run in main(); review works on one run at a time.
 REPORT = None
+# The make command that rewrites output/<run>/ from the verdict files.
+MAKE_REPORT = {"claude-vision": "make report",
+               "claude-no-vision": "make report VISION=no"}
 VERDICTS = None
 PAGES = Path(PAGES_DIR)
 
@@ -219,11 +222,11 @@ def main():
             else:
                 print(f"{item_id} -> {choice} (decided_by: human)")
         if not failed:
-            print("\nrun `make report` to pick these up")
+            print(f"\nrun `{MAKE_REPORT[args.run]}` to pick these up")
         sys.exit(1 if failed else 0)
 
     if not REPORT.exists():
-        sys.exit(f"review.py: {REPORT} not found; run `make report` first")
+        sys.exit(f"review.py: {REPORT} not found; run `{MAKE_REPORT[args.run]}` first")
 
     only = parse_pages(args.pages)
 
@@ -315,7 +318,7 @@ def main():
             break
 
     if changed:
-        print(f"\n{changed} verdict(s) rewritten; run `make report` to "
+        print(f"\n{changed} verdict(s) rewritten; run `{MAKE_REPORT[args.run]}` to "
               f"regenerate output/{args.run}/")
 
 

@@ -7,6 +7,8 @@
 #   make resolve-gemini-no-vision    # Gemini API, whole pages, without it
 #   make review-items                # or review-items-summary, and the same
 #                                    # for the no-vision run
+#   make report                      # after settling verdicts in review;
+#                                    # VISION=no for the no-vision run
 #
 # Every target takes PAGES=3-5 to work on just those pages.
 # prep-pending takes PDF_OFFSET=-2 when printed page 3 is the PDF's first
@@ -32,7 +34,7 @@ pages_words = $(if $(PAGES), Only pages $(PAGES).)
 lang_words  = $(if $(LANGUAGE), The texts are in $(LANGUAGE).)
 
 .PHONY: init prep-pending resolve resolve-claude-no-vision resolve-gemini-no-vision \
-        report review-items review-items-summary review-items-no-vision \
+        report finish finish-claude-no-vision finish-gemini-no-vision review-items review-items-summary review-items-no-vision \
         review-items-no-vision-summary
 
 init:
@@ -45,12 +47,11 @@ prep-pending:
 	$(PYTHON) scripts/pending.py --run $(RUN) $(pages_flag)
 
 # resolve runs whichever of the combinations below BACKEND, UNIT and VISION
-# name, then the report. The report runs even if the run was interrupted, so
-# what did finish is reported.
+# name. Each run finishes itself: a Claude run inside its Claude session, as
+# its prompt tells it to, and the Gemini run as its last step.
 resolve:
 	$(if $(filter $(COMBO),$(BUILT)),,$(error BACKEND=$(BACKEND) UNIT=$(UNIT) VISION=$(VISION) is not built))
-	-@$(MAKE) --no-print-directory resolve-$(COMBO)
-	@$(MAKE) --no-print-directory report
+	@$(MAKE) --no-print-directory resolve-$(COMBO)
 
 resolve-claude-no-vision:
 	@$(MAKE) --no-print-directory resolve VISION=no
@@ -60,17 +61,18 @@ resolve-gemini-no-vision:
 
 resolve-claude-item-yes:
 	$(PYTHON) scripts/images.py extract
-	claude "Adjudicate the pending pages using subagents, following agents/dispatcher.md, for the run claude-vision.$(pages_words)"
+	claude "Adjudicate the pending pages using subagents, following agents/dispatcher.md, for the run claude-vision.$(pages_words) When the run is done, even with failed pages, run make finish."
 
 resolve-claude-item-no:
-	claude "Adjudicate the pending pages using subagents, following agents/dispatcher.md, for the run claude-no-vision.$(lang_words)$(pages_words)"
+	claude "Adjudicate the pending pages using subagents, following agents/dispatcher.md, for the run claude-no-vision.$(lang_words)$(pages_words) When the run is done, even with failed pages, run make finish-claude-no-vision."
 
 resolve-gemini-page-no:
 	$(PYTHON) scripts/merge.py prep $(pages_flag)
-	$(PYTHON) scripts/merge.py gemini --model $(MODEL) $(pages_flag)
+	-$(PYTHON) scripts/merge.py gemini --model $(MODEL) $(pages_flag)
+	@$(MAKE) --no-print-directory finish BACKEND=gemini UNIT=page VISION=no
 
-# What a finished run leaves behind, in output/<run>/. Page images are
-# removed afterwards; review brings them back.
+# report writes a run's output/<run>/ from every page done so far. Run it after
+# settling verdicts in review; it leaves the page images for another walk.
 report:
 ifeq ($(UNIT),page)
 	$(PYTHON) scripts/merge.py assemble --label gemini-$(MODEL) --out output/$(RUN)
@@ -79,7 +81,18 @@ else
 	$(PYTHON) scripts/apply.py --run $(RUN)
 	$(PYTHON) scripts/report.py --run $(RUN)
 endif
+
+# finish is how a resolve run ends: the report, then the page images removed,
+# since they are the bulk of tmp/; review brings them back. The Gemini run
+# finishes even if some pages failed, so what did finish is written.
+finish: report
 	$(PYTHON) scripts/images.py clean
+
+finish-claude-no-vision:
+	@$(MAKE) --no-print-directory finish VISION=no
+
+finish-gemini-no-vision:
+	@$(MAKE) --no-print-directory finish BACKEND=gemini UNIT=page VISION=no
 
 # Per-item review of the two Claude runs. The Gemini run rewrites whole
 # pages, so it has no per-item verdicts to review; read it in meld.
