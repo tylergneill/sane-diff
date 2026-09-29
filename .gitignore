@@ -17,3 +17,6 @@ tmp/
 # Generated outputs. All of these come back from the three input files by
 # re-running the pipeline, so the repo tracks the scripts, not their results.
 output/
+
+# PyCharm
+.idea/
