@@ -66,6 +66,11 @@ Every target takes `PAGES=3-5`. `resolve-claude-no-vision` takes
 `agents/claude-adjudicator.md` and `agents/gemini-harmonizer.md`, unchanged,
 and those name Sanskrit themselves.
 
+Page markers give the printed page number. If the PDF does not start at printed
+page 1, give `prep-pending` the PDF page index minus the printed number, e.g.
+`PDF_OFFSET=-2` when printed page 3 is the PDF's first page. Later image
+extraction reuses the offset it recorded.
+
 Each `resolve*` writes its report when it finishes, then deletes the page
 images, the bulk of `tmp/`; the `review-items*` targets extract them again (fast).
 

@@ -8,6 +8,9 @@ them back.
 
   images.py extract   page.jpg for every page directory with a diffs.json
   images.py clean     delete every page.jpg, and the scratch/ crops agents made
+
+extract uses the PDF offset prep.py recorded, so each image comes from the
+same PDF page the resolve run saw.
 """
 
 import argparse
@@ -16,7 +19,7 @@ import sys
 from pathlib import Path
 
 from common import PAGES
-from prep import extract_pages
+from prep import extract_pages, read_offset
 
 
 def main():
@@ -46,8 +49,9 @@ def main():
     wanted = [int(d.name) for d in dirs
               if (d / "diffs.json").exists() and not (d / "page.jpg").exists()]
     if wanted:
-        extract_pages(args.pdf, args.work, wanted)
-    print(f"extracted {len(wanted)} page image(s)")
+        extract_pages(args.pdf, args.work, wanted, read_offset(args.work))
+    extracted = sum((args.work / f"{p:04d}" / "page.jpg").exists() for p in wanted)
+    print(f"extracted {extracted} page image(s)")
 
 
 if __name__ == "__main__":

@@ -9,11 +9,14 @@
 #                                    # for the no-vision run
 #
 # Every target takes PAGES=3-5 to work on just those pages.
+# prep-pending takes PDF_OFFSET=-2 when printed page 3 is the PDF's first
+# page; later image extraction reuses the offset it recorded.
 # resolve-claude-no-vision takes LANGUAGE=Latin for texts not in Sanskrit;
 # the other two runs use their original prompts, which name Sanskrit.
 
 PYTHON  ?= python3
 PAGES   ?=
+PDF_OFFSET ?= 0
 BACKEND ?= claude
 UNIT    ?= item
 VISION  ?= yes
@@ -38,7 +41,7 @@ init:
 	$(PYTHON) scripts/init.py --base "$(BASE)" --suggester "$(SUGGESTER)" $(if $(IMAGE),--image "$(IMAGE)")
 
 prep-pending:
-	$(PYTHON) scripts/prep.py $(pages_flag)
+	$(PYTHON) scripts/prep.py --pdf-offset $(PDF_OFFSET) $(pages_flag)
 	$(PYTHON) scripts/pending.py --run $(RUN) $(pages_flag)
 
 # resolve runs whichever of the combinations below BACKEND, UNIT and VISION

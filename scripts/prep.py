@@ -12,11 +12,16 @@ The two texts must be page- and line-aligned.
 Page images are extracted only if input/image.pdf exists. They are deleted
 again after each resolve run and brought back for review; images.py does
 both.
+
+Page markers carry the printed page number, which need not be the PDF's own
+page index; --pdf-offset maps one to the other. The offset is recorded in
+tmp/pages/prep.json so that images.py extracts the same PDF pages later.
 """
 
 import argparse
 import difflib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -106,8 +111,11 @@ def page_diffs(page_no, blines, slines):
 # without first scaling it down.
 RENDER_DPI = 200
 
+# Records the PDF offset this prep used, beside the page directories.
+RUN_FILE = "prep.json"
 
-def extract_pages(pdf, outdir, pages):
+
+def extract_pages(pdf, outdir, pages, offset=0):
     """Put each wanted page's image into its page directory as page.jpg.
 
     A scanned edition stores one image per page, so the page image is already
@@ -120,17 +128,30 @@ def extract_pages(pdf, outdir, pages):
     some other way) is rendered instead, with pdftoppm at RENDER_DPI. Both
     tools come with poppler. The count of rendered pages is reported, since
     those images are made rather than copied.
+
+    offset is added to each printed page number to find its PDF page: an
+    edition whose PDF starts at printed page 3 has offset -2. A page that
+    falls outside the PDF gets no image, and is reported.
     """
     for tool in ("pdfimages", "pdftoppm"):
         if not shutil.which(tool):
             die(f"{tool} not found on PATH (install poppler)")
 
     rendered = []
+    missing = []
+    pdf_pages = _pdf_page_count(pdf)
     for page_no in tqdm(pages, desc="extracting", unit="page"):
         dest = outdir / f"{page_no:04d}"
         dest.mkdir(parents=True, exist_ok=True)
+        # Never leave a stale image behind: a page.jpg from an earlier prep
+        # with a different offset would otherwise survive and look correct.
+        (dest / "page.jpg").unlink(missing_ok=True)
+        pdf_page = page_no + offset
+        if not 1 <= pdf_page <= pdf_pages:
+            missing.append(page_no)
+            continue
         prefix = dest / "page"
-        _run(["pdfimages", "-j", "-f", str(page_no), "-l", str(page_no),
+        _run(["pdfimages", "-j", "-f", str(pdf_page), "-l", str(pdf_page),
               str(pdf), str(prefix)], page_no)
 
         # pdfimages appends its own index: page-000.jpg, and .ppm/.pbm when
@@ -142,8 +163,8 @@ def extract_pages(pdf, outdir, pages):
         for f in produced:
             f.unlink()
         # -singlefile writes <prefix>.jpg with no page-number suffix.
-        _run(["pdftoppm", "-jpeg", "-r", str(RENDER_DPI), "-f", str(page_no),
-              "-l", str(page_no), "-singlefile", str(pdf), str(prefix)], page_no)
+        _run(["pdftoppm", "-jpeg", "-r", str(RENDER_DPI), "-f", str(pdf_page),
+              "-l", str(pdf_page), "-singlefile", str(pdf), str(prefix)], page_no)
         rendered.append(page_no)
 
     if rendered:
@@ -151,6 +172,29 @@ def extract_pages(pdf, outdir, pages):
               f"rendered at {RENDER_DPI} DPI instead: "
               f"{', '.join(str(p) for p in rendered[:10])}"
               f"{'...' if len(rendered) > 10 else ''}", file=sys.stderr)
+    if missing:
+        print(f"prep.py: {len(missing)} page(s) fall outside the PDF's {pdf_pages} pages "
+              f"with offset {offset}, so have no image: "
+              f"{', '.join(str(p) for p in missing[:10])}"
+              f"{'...' if len(missing) > 10 else ''}", file=sys.stderr)
+
+
+def _pdf_page_count(pdf):
+    if not shutil.which("pdfinfo"):
+        die("pdfinfo not found on PATH (install poppler)")
+    result = subprocess.run(["pdfinfo", str(pdf)], capture_output=True, text=True)
+    m = re.search(r"^Pages:\s+(\d+)", result.stdout, re.MULTILINE)
+    if result.returncode != 0 or not m:
+        die(f"pdfinfo could not read {pdf}: {result.stderr.strip()}")
+    return int(m.group(1))
+
+
+def read_offset(work):
+    """The PDF offset the last prep recorded in work, or 0 if it recorded none."""
+    run_file = Path(work) / RUN_FILE
+    if not run_file.exists():
+        return 0
+    return json.loads(run_file.read_text(encoding="utf-8"))["pdf_offset"]
 
 
 def _run(cmd, page_no):
@@ -171,6 +215,9 @@ def main():
                     help="restrict to these pages, e.g. 12-21 or 3,5,9")
     ap.add_argument("--no-images", action="store_true",
                     help="write diffs.json only, even if image.pdf exists")
+    ap.add_argument("--pdf-offset", default=0, type=int,
+                    help="PDF page index minus printed page number, e.g. -2 "
+                         "when printed page 3 is the PDF's first page")
     args = ap.parse_args()
 
     base_path = args.input / "base.txt"
@@ -199,6 +246,8 @@ def main():
         shared = [p for p in shared if p in wanted]
 
     args.work.mkdir(parents=True, exist_ok=True)
+    (args.work / RUN_FILE).write_text(
+        json.dumps({"pdf_offset": args.pdf_offset}, indent=2) + "\n", encoding="utf-8")
     with_diffs = []
     total_items = 0
     for page_no in tqdm(shared, desc="diffing", unit="page"):
@@ -215,7 +264,7 @@ def main():
         )
 
     if with_diffs and not args.no_images and pdf_path.exists():
-        extract_pages(pdf_path, args.work, with_diffs)
+        extract_pages(pdf_path, args.work, with_diffs, args.pdf_offset)
 
     clean = len(shared) - len(with_diffs)
     print(f"pages compared:   {len(shared)}")
