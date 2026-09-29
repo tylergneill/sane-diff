@@ -68,6 +68,10 @@ Every target takes `PAGES=3-5`. `resolve-claude-no-vision` takes
 `agents/claude-adjudicator.md` and `agents/gemini-harmonizer.md`, unchanged,
 and those name Sanskrit themselves.
 
+Every `resolve*` target takes `WORKERS=10` to change how many pages run at
+once: Claude sub-agents in flight (default 25, in `agents/dispatcher.md`) or
+concurrent Gemini calls (default 20, in `scripts/merge.py`).
+
 Page markers give the printed page number. If the PDF does not start at printed
 page 1, give `prep-pending` the PDF page index minus the printed number, e.g.
 `PDF_OFFSET=-2` when printed page 3 is the PDF's first page. Later image
