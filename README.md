@@ -7,12 +7,12 @@ like. Language-agnostic, with Sanskrit as a default.
 The **base** is the text whose readings are kept by default, usually the one
 readers already trust. The **suggester** is a second transcription that
 proposes changes to it. These can be OCR, a hand transcription, another
-model's output, or anything in between. Both texts must carry the same page 
+model's output, or anything in between. Both texts must carry the same page
 markers, `<p.12>` or `=== 12 ===` (detected per file).
 
-Each page is seen in isolation from every other. General prompts are set in 
-`agents/` and shown equally to every inference call or agent. The LLM can 
-issue decisions either on the level of individual diff items, or it can 
+Each page is seen in isolation from every other. General prompts are set in
+`agents/` and shown equally to every inference call or agent. The LLM can
+issue decisions either on the level of individual diff items, or it can
 rewrite the whole page.
 
 Currently supported:
@@ -84,15 +84,24 @@ if you end the session early, run its `finish` target yourself.
 
 The `resolve*` targets differ along three axes:
 
-| axis | values |
-|---|---|
-| backend | Claude sub-agents (on your subscription) · Gemini API |
-| unit | `item`: the model decides each disagreement and a script applies its answers · `page`: the model rewrites the whole page |
-| vision | the model sees the page image, or not |
+| axis | variable | values |
+|---|---|---|
+| backend | `BACKEND` | `claude`: Claude sub-agents (on your subscription) · `gemini`: Gemini API |
+| unit | `UNIT` | `item`: the model decides each disagreement and a script applies its answers · `page`: the model rewrites the whole page |
+| vision | `VISION` | `yes`: the model sees the page image · `no`: it does not |
 
-A Claude run starts Claude Code as `claude "<prompt>"`, which fans out one
-sub-agent per page following `agents/dispatcher.md` and finishes the run
-when every page is done. An interrupted run resumes where it stopped.
+`make resolve` runs whichever combination these name (default
+`BACKEND=claude UNIT=item VISION=yes`); `resolve-claude-no-vision` and
+`resolve-gemini-no-vision` are shorthands for the other two that are built.
+The Gemini run takes `MODEL=2.5-pro` (default `2.5-flash`); the model needs
+a price in `scripts/gemini.py`.
+
+A Claude run starts Claude Code as `claude "<prompt>"`, which follows
+`agents/dispatcher.md`: `scripts/workflow.py` splits the pending pages into
+workflows, each running one sub-agent per page, at most min(16, CPUs − 2)
+at a time, and as many workflows run at once as it takes to reach
+`WORKERS`. The session finishes the run when every page is done. An
+interrupted run resumes where it stopped.
 
 **Claude runs are token-hungry.** Each page gets a fresh sub-agent, and in
 a vision run each one reads a full page image. A whole book uses a lot of
@@ -132,6 +141,14 @@ Pro tip: to make the changed characters stand out in bright yellow (instead of t
 
 ![Meld with changed characters highlighted in yellow](docs/meld-yellow-hack.png)
 
+To put a number on it, `scripts/count_diffs.py` counts the differences Meld
+would highlight, one per yellow inline span (`--unit word` for words,
+`--unit block` for Meld's blocks, `-v` to list each with context):
+
+```sh
+python3 scripts/count_diffs.py input/base.txt output/claude-vision/corrected.txt
+```
+
 `corrected.marked.txt` shows each change with its verdict:
 
 | mark | |
@@ -142,9 +159,9 @@ Pro tip: to make the changed characters stand out in bright yellow (instead of t
 | `{~}` `{?}` | medium / low confidence, combined (`{+~}`, `{!?}`) |
 
 This same markup in `corrected.marked.txt` is consumed by sane-diff's own
-review system: `make review-items` opens a CLI interface that walks the low- and 
-medium-confidence verdicts page by page, showing the base, the suggester, 
-the reading and the agent's note, and opens each page image without raising 
+review system: `make review-items` opens a CLI interface that walks the low- and
+medium-confidence verdicts page by page, showing the base, the suggester,
+the reading and the agent's note, and opens each page image without raising
 the viewer (so place the image viewer window where you want it first).
 High-confidence verdicts are never shown. For narrower
 walks, `scripts/review.py --overrides` shows only `other` verdicts, and
