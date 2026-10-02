@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+
+# API keys (GEMINI_API_KEY=...), read by scripts/gemini.py.
+.env
+
+# Edition data: supplied per text, never carried in the repo.
+input/
+
+# The working directory is disposable: everything under tmp/ is
+# regenerable from the files in input/.
+tmp/
+
+# Generated outputs. All of these come back from the three input files by
+# re-running the pipeline, so the repo tracks the scripts, not their results.
+output/
+
+# PyCharm
+.idea/

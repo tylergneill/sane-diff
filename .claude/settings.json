@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Workflow"
+    ]
+  },
+  "workflowSizeGuideline": "unrestricted"
+}
