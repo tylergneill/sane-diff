@@ -9,10 +9,15 @@
 #                                    # for the no-vision run
 #   make report                      # after settling verdicts in review;
 #                                    # VISION=no for the no-vision run
+#   make renumber FILE=corrected.txt OFFSET=151
+#                                    # page markers + OFFSET, at the very end
 #
 # Every target takes PAGES=3-5 to work on just those pages.
 # prep-pending takes PDF_OFFSET=-2 when printed page 3 is the PDF's first
-# page; later image extraction reuses the offset it recorded.
+# page, but only if the page markers already give printed page numbers. If
+# they count PDF pages from 1, leave PDF_OFFSET out and renumber the markers
+# at the end with make renumber (see README). Later image extraction reuses
+# the offset prep recorded.
 # resolve-claude-no-vision takes LANGUAGE=Latin for texts not in Sanskrit;
 # the other two runs use their original prompts, which name Sanskrit.
 # Every resolve* run takes WORKERS=10 to change how many pages run at once:
@@ -41,7 +46,7 @@ workers_words = $(if $(WORKERS), Keep up to $(WORKERS) sub-agents in flight at a
 
 .PHONY: init prep-pending resolve resolve-claude-no-vision resolve-gemini-no-vision \
         report finish finish-claude-no-vision finish-gemini-no-vision review-items review-items-summary review-items-no-vision \
-        review-items-no-vision-summary
+        review-items-no-vision-summary renumber
 
 init:
 	$(if $(BASE),,$(error BASE= is required))
@@ -120,3 +125,11 @@ review-items-no-vision:
 review-items-no-vision-summary:
 	$(PYTHON) scripts/images.py extract
 	$(PYTHON) scripts/review.py --run claude-no-vision --summary $(pages_flag)
+
+# renumber adds OFFSET to every page marker in FILE, writing
+# <name>.renumbered<ext> beside it, for texts whose markers count PDF pages
+# from 1. OFFSET is the opposite sign of the PDF_OFFSET prep would have taken.
+renumber:
+	$(if $(FILE),,$(error FILE= is required))
+	$(if $(OFFSET),,$(error OFFSET= is required))
+	$(PYTHON) scripts/renumber.py "$(FILE)" --offset $(OFFSET)

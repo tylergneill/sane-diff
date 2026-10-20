@@ -72,10 +72,24 @@ Every `resolve*` target takes `WORKERS=10` to change how many pages run at
 once: Claude sub-agents in flight (default 25, in `agents/dispatcher.md`) or
 concurrent Gemini calls (default 20, in `scripts/merge.py`).
 
-Page markers give the printed page number. If the PDF does not start at printed
-page 1, give `prep-pending` the PDF page index minus the printed number, e.g.
-`PDF_OFFSET=-2` when printed page 3 is the PDF's first page. Later image
-extraction reuses the offset it recorded.
+`PDF_OFFSET` depends on what the page markers in the two texts count, not on
+where the PDF starts:
+
+- If the markers already give printed page numbers (`=== 152 ===` on the PDF's
+  first page), give `prep-pending` the PDF page index minus the printed number,
+  e.g. `PDF_OFFSET=-151` when the PDF starts at printed page 152, or
+  `PDF_OFFSET=-2` when it starts at printed page 3.
+- If the markers count PDF pages from 1 (`=== 1 ===` on the PDF's first page,
+  as OCR that doesn't know the edition's numbering usually writes them), leave
+  `PDF_OFFSET` out. Using an offset with these markers points every page at a
+  PDF page that doesn't exist, so no page gets an image and a vision run has
+  nothing to read. Renumber the markers to printed page numbers at the end,
+  in the final text: `make renumber FILE=corrected.txt OFFSET=151` adds 151
+  to every marker (the opposite sign of the `PDF_OFFSET` it replaces) and
+  writes `corrected.renumbered.txt` beside it.
+
+Directory `tmp/pages/NNNN/` takes the marker's number either way. Later image
+extraction reuses the offset `prep-pending` recorded in `tmp/pages/prep.json`.
 
 Each `resolve*` finishes itself: it writes `output/<run>/`, then deletes the page
 images, the bulk of `tmp/`; the `review-items*` targets extract them again (fast).
