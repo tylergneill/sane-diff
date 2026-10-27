@@ -110,12 +110,13 @@ finish-gemini-no-vision:
 
 # Per-item review of the two Claude runs. The Gemini run rewrites whole
 # pages, so it has no per-item verdicts to review; read it in meld.
+# The walks extract the page images to show; the summaries print a table
+# and never look at a scan, so they leave tmp/ without images.
 review-items:
 	$(PYTHON) scripts/images.py extract
 	$(PYTHON) scripts/review.py --run claude-vision $(pages_flag)
 
 review-items-summary:
-	$(PYTHON) scripts/images.py extract
 	$(PYTHON) scripts/review.py --run claude-vision --summary $(pages_flag)
 
 review-items-no-vision:
@@ -123,7 +124,6 @@ review-items-no-vision:
 	$(PYTHON) scripts/review.py --run claude-no-vision $(pages_flag)
 
 review-items-no-vision-summary:
-	$(PYTHON) scripts/images.py extract
 	$(PYTHON) scripts/review.py --run claude-no-vision --summary $(pages_flag)
 
 # renumber adds OFFSET to every page marker in FILE, writing
