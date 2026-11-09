@@ -17,8 +17,8 @@ both inputs when the source is a separate file.
 changes nothing in input/. Inspect it, then `accept` copies it into input/,
 keeping the previous version beside it as <role>.before.txt.
 
-The placing itself is hansel-data's transfer_page_markers.py (--transfer),
-which fuzzy-matches the text on either side of each source page break
+The placing itself is transfer_page_markers.py, copied here from hansel-data
+(utils/transforms/txt, as of 8071f3e, 2026-10-26), which fuzzy-matches the text on either side of each source page break
 against the target. It never places the first page's marker, so this script
 puts that one where the target had it, or at the very start of the text.
 
@@ -31,7 +31,6 @@ look.
 """
 
 import argparse
-import importlib.util
 import json
 import re
 import shutil
@@ -39,12 +38,11 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import transfer_page_markers as transfer
 from common import MARKER_FORMATS, MARKERS, resolve_marker, split_pages
 
-ROOT = Path(__file__).resolve().parent.parent
 INPUT = Path("input")
 OUT = Path("tmp/massage/markers")
-DEFAULT_TRANSFER = ROOT.parent / "hansel/hansel-data/utils/transforms/txt/transfer_page_markers.py"
 ROLES = ("base", "suggester")
 
 # An old marker within this many letters of the new one, with the same
@@ -63,14 +61,6 @@ def die(msg):
     print(f"markers.py: {msg}", file=sys.stderr)
     sys.exit(1)
 
-
-def load_transfer(path):
-    if not path.is_file():
-        die(f"transfer_page_markers.py not found at {path}; pass --transfer")
-    spec = importlib.util.spec_from_file_location("transfer_page_markers", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def marker_name(regex):
@@ -306,7 +296,6 @@ def source_role(value):
 
 
 def run(args):
-    transfer = load_transfer(args.transfer)
     src_path = INPUT / f"{args.source}.txt" if source_role(args.source) else Path(args.source)
     if not src_path.is_file():
         die(f"no source text at {src_path}")
@@ -490,7 +479,6 @@ def main():
     r.add_argument("--source", required=True,
                    help="base, suggester, or a path to a text with complete markers")
     r.add_argument("--target", choices=list(ROLES) + ["both"])
-    r.add_argument("--transfer", type=Path, default=DEFAULT_TRANSFER)
     sub.add_parser("accept")
     args = ap.parse_args()
     run(args) if args.cmd == "run" else accept(args)

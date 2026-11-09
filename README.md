@@ -158,8 +158,8 @@ complete set. Markers that agree (same number, within 20 letters) are left
 exactly as they were; a wrong number is fixed in place; a missing marker goes
 in on its own line, adding no blank lines, so the spacing that tells a new
 paragraph from prose running across a page survives. Nothing else in the
-text changes, and the script checks that. The placing is done by hansel-data's
-`transfer_page_markers.py` (`../hansel/...`, or `--transfer`).
+text changes, and the script checks that. The placing is done by
+`scripts/transfer_page_markers.py`, a copy of hansel-data's.
 
 It writes `tmp/massage/markers/<role>.txt` and `report.txt`, worst first.
 `make massage-markers-accept` copies the result into `input/`, keeping the
