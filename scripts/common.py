@@ -15,7 +15,10 @@ import sys
 MARKERS = {
     "p": r"^\s*<p\.(\d+)>\s*$",          # <p.12>
     "equals": r"^\s*===\s*(\d+)\s*===\s*$",  # === 12 ===
+    "angle": r"^\s*<(\d+)>\s*$",         # <12>
 }
+# How to write a page marker in each named format.
+MARKER_FORMATS = {"p": "<p.{n}>", "equals": "=== {n} ===", "angle": "<{n}>"}
 DEFAULT_MARKER = MARKERS["p"]
 
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Start a new text: clear input/, tmp/ and output/, then copy the sources in.
 
-input/notes.md is kept, since it often carries over between texts of one
-edition; delete it by hand when it does not. Everything else in input/ goes.
+input/notes.md and the massage stages' notes_<stage>.md are kept, since they
+often carry over between texts of one edition; delete them by hand when they
+do not. Everything else in input/ goes.
 
 tmp/ and output/ are only cleared after you confirm, when there is anything
 in them. tmp/ holds the Gemini cost ledger (tmp/usage/) as well as the
@@ -17,7 +18,9 @@ import sys
 from pathlib import Path
 
 INPUT = Path("input")
-KEEP = {"notes.md"}
+# notes.md is resolve's; notes_<stage>.md are the massage stages' (markers,
+# gaps, format).
+KEEP = {"notes.md", "notes_markers.md", "notes_gaps.md", "notes_format.md"}
 CLEARED = (Path("tmp"), Path("output"))
 
 

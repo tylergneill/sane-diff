@@ -143,6 +143,31 @@ The prompt is `agents/gemini-harmonizer.md`, the old notebook's, with the two
 pages filled in; it does not use `input/notes.md`. `python3 scripts/merge.py
 prompt 12` prints exactly what page 12 is sent.
 
+## Massage: getting the two texts to line up
+
+Before resolving, the two texts often need work by hand to line up: page
+markers, big gaps, then line format. This is being automated in stages, each
+ending with a pause for you to inspect and accept. Each stage has its own
+notes file in `input/` (`notes_markers.md`, `notes_gaps.md`,
+`notes_format.md`), kept by `make init`.
+
+**Stage 1, page markers.** `make massage-markers SOURCE=suggester` puts the
+source's page markers into the other text in place of its own. `SOURCE` is
+`base`, `suggester`, or a path to another file with the same text and the
+complete set. Markers that agree (same number, within 20 letters) are left
+exactly as they were; a wrong number is fixed in place; a missing marker goes
+in on its own line, adding no blank lines, so the spacing that tells a new
+paragraph from prose running across a page survives. Nothing else in the
+text changes, and the script checks that. The placing is done by hansel-data's
+`transfer_page_markers.py` (`../hansel/...`, or `--transfer`).
+
+It writes `tmp/massage/markers/<role>.txt` and `report.txt`, worst first.
+`make massage-markers-accept` copies the result into `input/`, keeping the
+previous version beside it. If a passage one text lacks throws the transfer
+off, the report says where (`LOST from page 214 on ... page(s) 214, 215, 216
+not in the base`) and accept refuses: close that gap first, then run it
+again.
+
 ## Review
 
 Output should be inspected directly with a good diff tool like [Meld](https://meld.en.softonic.com/)

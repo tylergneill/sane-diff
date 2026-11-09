@@ -44,7 +44,7 @@ lang_words  = $(if $(LANGUAGE), The texts are in $(LANGUAGE).)
 workers_flag  = $(if $(WORKERS),--workers $(WORKERS))
 workers_words = $(if $(WORKERS), Keep up to $(WORKERS) sub-agents in flight at a time.)
 
-.PHONY: init prep-pending resolve resolve-claude-no-vision resolve-gemini-no-vision \
+.PHONY: init massage-markers massage-markers-accept prep-pending resolve resolve-claude-no-vision resolve-gemini-no-vision \
         report finish finish-claude-no-vision finish-gemini-no-vision review-items review-items-summary review-items-no-vision \
         review-items-no-vision-summary renumber
 
@@ -52,6 +52,18 @@ init:
 	$(if $(BASE),,$(error BASE= is required))
 	$(if $(SUGGESTER),,$(error SUGGESTER= is required))
 	$(PYTHON) scripts/init.py --base "$(BASE)" --suggester "$(SUGGESTER)" $(if $(IMAGE),--image "$(IMAGE)")
+
+# Massage, stage 1: complete page markers. SOURCE is base, suggester, or a
+# path to a text with the complete set; TARGET defaults to the other input
+# (both, for a path). Writes tmp/massage/markers/ and changes nothing in
+# input/ until you accept it.
+SOURCE ?= suggester
+TARGET ?=
+massage-markers:
+	$(PYTHON) scripts/markers.py run --source "$(SOURCE)" $(if $(TARGET),--target $(TARGET))
+
+massage-markers-accept:
+	$(PYTHON) scripts/markers.py accept
 
 prep-pending:
 	$(PYTHON) scripts/prep.py --pdf-offset $(PDF_OFFSET) $(pages_flag)
