@@ -208,16 +208,17 @@ goes to the settler only.
 
 **align-lines** lines the two texts up line by line. Neither text's layout
 can simply be copied, so an agent per page (`agents/line-setter.md`) first
-sets out the base's lines from the page image and `notes_lines.md`: one
-line per prose paragraph, verses as verse lines, blocks separated by a
-blank line, and short introductions (`āgame`, `mūlam`) and headings as
-their own blocks. It changes only whitespace, and keeps each page's start
+sets out the base's lines following the print, diplomatically: one line
+per prose paragraph, one per verse line, and a blank line between blocks.
+`notes_lines.md` says where the text should differ from the print. It
+changes only whitespace, and keeps each page's start
 and end, which say whether the page runs on from the one before.
 `scripts/lines.py` then refuses any page whose words changed, and carries
 the base's layout over to the suggester by aligning the words. It writes
 `tmp/lines/base.txt`, `suggester.txt` and `report.txt`.
 
-`LINES_MODEL=sonnet` runs the agents on a smaller model. In a test on four
+The agents run on Sonnet by default (`LINES_MODEL=` with nothing uses the
+session's model). In a test on four
 pages, it set them out as the default did, except for one verse the print
 runs on like prose: Sonnet kept it as printed, the default set it out as
 verse. Say which you want in `notes_lines.md`.

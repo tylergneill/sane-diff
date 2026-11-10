@@ -88,8 +88,9 @@ fix-gaps:
 # verses, headings; whitespace only), then carry that layout over to the
 # suggester, in a Claude session that talks the result through. Writes
 # tmp/lines/; input/ changes only when you say so. LINES_MODEL picks the
-# agents' model, e.g. sonnet; empty means the session's.
-LINES_MODEL ?=
+# agents' model (default sonnet: the task is layout, not close reading);
+# LINES_MODEL= with nothing uses the session's.
+LINES_MODEL ?= sonnet
 align-lines:
 	claude "Line the two texts up following agents/align-lines.md$(if $(LINES_MODEL), with model $(LINES_MODEL)). Use a workflow.$(pages_words)"
 

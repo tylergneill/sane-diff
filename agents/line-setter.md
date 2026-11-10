@@ -12,21 +12,16 @@ you edit. The page image is named under Paths below.
 
 ## The layout
 
+Follow the print, diplomatically:
+
 - **Prose** is one line per paragraph, however many lines it takes on the
   page. A paragraph ends where the print starts a new one.
-- **Verse** is one line per verse line as printed, usually a half-verse,
-  ending in `|` or `||`. A verse, or a run of verses, is its own block.
+- **Verse** is one line per verse line as printed.
 - **Blocks** are separated by one blank line: each prose paragraph, each
-  run of verse, and each heading or other short line set apart in the
-  print.
-- **A short introduction set on its own**, such as a source naming the
-  verses that follow (`āgame`, `mūlam`, `tatra śrīkapila bhāgavate |`), or
-  a heading or colophon, is its own block, on its own line.
-- Keep a speaker's name with what he says (`śrīhaṃsaḥ | śṛṇu śakte |`)
-  unless the print sets it apart.
+  run of verse lines, and each line the print sets apart on its own.
 
-The editor's notes below say more about this text; where they differ from
-the above, they win.
+The editor's notes below say where this text should differ from the print;
+where they do, they win.
 
 ## Steps
 
@@ -35,8 +30,7 @@ the above, they win.
    directory.
 2. Rewrite `base.txt` with the layout above, changing only spaces, line
    breaks and blank lines. Never add, drop, join, split or change a word or
-   a mark. Never add a daṇḍa: a verse with no `||` at its end is still set
-   out as verse, as it is.
+   a mark.
 3. Keep the page's start and end as they are: if `base.txt` begins or ends
    with blank lines, or does not, leave that alone. It says whether the
    page starts a new paragraph or runs on from the one before, and whether

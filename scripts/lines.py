@@ -185,6 +185,9 @@ def apply(_args):
             continue
         before = (d / "before" / "base.txt").read_text(encoding="utf-8")
         after = (d / "base.txt").read_text(encoding="utf-8")
+        # Writing a file usually ends it with a newline; the page had none.
+        if after.endswith("\n") and not before.endswith("\n"):
+            after = after[:-1]
         if page_text(blines, bblocks, page) != before:
             die(f"page {page} of input/base.txt has changed since prep; run lines.py prep again")
         if before.split() != after.split():
