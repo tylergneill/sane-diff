@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""Massage, stage 1: give a text a complete set of page markers.
+"""align-pages: give a text a complete set of page markers.
 
 Takes the page markers of a source text whose markers are complete, and puts
 them into a target text in place of whatever markers it had. Only marker
 lines and the blank lines around them change; every other character of the
 target stays as it was, and the script checks that before writing.
 
-  markers.py run --source suggester [--target base]
-  markers.py accept
+  align.py --source suggester [--target base]
 
 --source is base, suggester, or the path to another file with the same text
 (an earlier OCR output, say). --target defaults to the other input, or to
 both inputs when the source is a separate file.
 
-`run` writes the result to tmp/massage/markers/, with report.txt, and
-changes nothing in input/. Inspect it, then `accept` copies it into input/,
-keeping the previous version beside it as <role>.before.txt.
+It writes the result to tmp/align/<role>.txt, with report.txt, and changes
+nothing in input/. make align-pages runs it inside a Claude session that
+checks the flagged pages against their images and talks the result through
+with you; copying the result into input/ is your call.
 
 The placing itself is transfer_page_markers.py, copied here from hansel-data
 (utils/transforms/txt, as of 8071f3e, 2026-10-26), which fuzzy-matches the text on either side of each source page break
@@ -31,9 +31,7 @@ look.
 """
 
 import argparse
-import json
 import re
-import shutil
 import sys
 from collections import Counter
 from pathlib import Path
@@ -42,7 +40,7 @@ import transfer_page_markers as transfer
 from common import MARKER_FORMATS, MARKERS, resolve_marker, split_pages
 
 INPUT = Path("input")
-OUT = Path("tmp/massage/markers")
+OUT = Path("tmp/align")
 ROLES = ("base", "suggester")
 
 # An old marker within this many letters of the new one, with the same
@@ -58,7 +56,7 @@ CONTEXT = 60
 
 
 def die(msg):
-    print(f"markers.py: {msg}", file=sys.stderr)
+    print(f"align.py: {msg}", file=sys.stderr)
     sys.exit(1)
 
 
@@ -422,7 +420,8 @@ def run(args):
                                  f"look for a long passage one side lacks")
             warning = [f"!! LOST from page {lost} on: every later marker is unreliable.",
                        f"!! {where}.",
-                       f"!! Close that gap first (stage 2, or by hand), then run this again."]
+                       f"!! Don't use this {role}.txt: close that gap first (fix-gaps, or by hand), "
+                       f"then run this again."]
         else:
             warning = []
 
@@ -443,45 +442,20 @@ def run(args):
         report += head + [""] + [e for _, _, e in sorted(entries)] + [""]
 
     (OUT / "report.txt").write_text("\n".join(report), encoding="utf-8")
-    (OUT / "run.json").write_text(json.dumps({"source": str(src_path), "targets": list(targets),
-                                              "lost": lost_roles}, indent=2) + "\n",
-                                  encoding="utf-8")
     print("\n".join(summary))
     print(f"wrote {', '.join(str(OUT / f'{r}.txt') for r in targets)} and {OUT / 'report.txt'}")
     if lost_roles:
-        print(f"not acceptable as it stands: the transfer lost its place in {', '.join(lost_roles)}")
-    else:
-        print("inspect them, e.g. meld input/<role>.txt " + str(OUT / "<role>.txt")
-              + ", then: make massage-markers-accept")
-
-
-def accept(_args):
-    run_file = OUT / "run.json"
-    if not run_file.exists():
-        die("nothing to accept; run make massage-markers first")
-    run_info = json.loads(run_file.read_text(encoding="utf-8"))
-    if run_info.get("lost"):
-        die(f"the last run lost its place in {', '.join(run_info['lost'])}; close the gap "
-            f"its report names and run make massage-markers again")
-    for role in run_info["targets"]:
-        new, cur = OUT / f"{role}.txt", INPUT / f"{role}.txt"
-        shutil.copyfile(cur, OUT / f"{role}.before.txt")
-        shutil.copyfile(new, cur)
-        print(f"{cur}  <-  {new}  (previous kept as {OUT / f'{role}.before.txt'})")
-    run_file.unlink()
+        print(f"!! the transfer lost its place in {', '.join(lost_roles)}: "
+              f"don't use that result as it stands")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    r = sub.add_parser("run")
-    r.add_argument("--source", required=True,
-                   help="base, suggester, or a path to a text with complete markers")
-    r.add_argument("--target", choices=list(ROLES) + ["both"])
-    sub.add_parser("accept")
-    args = ap.parse_args()
-    run(args) if args.cmd == "run" else accept(args)
+    ap.add_argument("--source", required=True,
+                    help="base, suggester, or a path to a text with complete markers")
+    ap.add_argument("--target", choices=list(ROLES) + ["both"])
+    run(ap.parse_args())
 
 
 if __name__ == "__main__":

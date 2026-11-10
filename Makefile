@@ -2,6 +2,7 @@
 #
 #   make init BASE=base.txt SUGGESTER=suggester.txt IMAGE=image.pdf
 #   make prep-images                 # page images, kept until clean-up
+#   make align-pages                 # complete page markers (SOURCE=suggester)
 #   make prep-diffs                  # again whenever the texts change
 #   make resolve                     # Claude, per item, with the page image
 #   make resolve-claude-no-vision    # Claude, per item, without it
@@ -46,7 +47,7 @@ lang_words  = $(if $(LANGUAGE), The texts are in $(LANGUAGE).)
 workers_flag  = $(if $(WORKERS),--workers $(WORKERS))
 workers_words = $(if $(WORKERS), Keep up to $(WORKERS) sub-agents in flight at a time.)
 
-.PHONY: init prep-images massage-markers massage-markers-accept prep-diffs resolve resolve-claude-no-vision \
+.PHONY: init prep-images align-pages prep-diffs resolve resolve-claude-no-vision \
         resolve-gemini-no-vision report review-items review-items-summary review-items-no-vision \
         review-items-no-vision-summary clean-up renumber
 
@@ -58,17 +59,15 @@ init:
 prep-images:
 	$(PYTHON) scripts/images.py prep --pdf-offset $(PDF_OFFSET) $(pages_flag)
 
-# Massage, stage 1: complete page markers. SOURCE is base, suggester, or a
-# path to a text with the complete set; TARGET defaults to the other input
-# (both, for a path). Writes tmp/massage/markers/ and changes nothing in
-# input/ until you accept it.
+# align-pages: complete page markers, in a Claude session that checks the
+# flagged pages against their images and talks the result through. SOURCE is
+# base, suggester, or a path to a text with the complete set; TARGET defaults
+# to the other input (both, for a path). Writes tmp/align/; input/ changes
+# only when you say so in the session.
 SOURCE ?= suggester
 TARGET ?=
-massage-markers:
-	$(PYTHON) scripts/markers.py run --source "$(SOURCE)" $(if $(TARGET),--target $(TARGET))
-
-massage-markers-accept:
-	$(PYTHON) scripts/markers.py accept
+align-pages:
+	claude "Align the page markers following agents/align-pages.md, with source $(SOURCE)$(if $(TARGET), and target $(TARGET))."
 
 prep-diffs:
 	$(PYTHON) scripts/prep.py $(pages_flag)

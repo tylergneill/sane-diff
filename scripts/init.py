@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Start a new text: clear input/, tmp/ and output/, then copy the sources in.
 
-input/notes.md and the massage stages' notes_<stage>.md are kept, since they
+input/notes.md and the notes for the steps before resolve are kept, since they
 often carry over between texts of one edition; delete them by hand when they
 do not. Everything else in input/ goes.
 
@@ -18,8 +18,8 @@ import sys
 from pathlib import Path
 
 INPUT = Path("input")
-# notes.md is resolve's; notes_<stage>.md are the massage stages' (markers,
-# gaps, format).
+# notes.md is resolve's; notes_markers.md is align-pages', notes_gaps.md
+# fix-gaps', notes_format.md the format step's.
 KEEP = {"notes.md", "notes_markers.md", "notes_gaps.md", "notes_format.md"}
 CLEARED = (Path("tmp"), Path("output"))
 
