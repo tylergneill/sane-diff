@@ -157,6 +157,7 @@ make prep-images
 make align-pages SOURCE=suggester   # ends in a chat
 make prep-diffs
 make fix-gaps                       # ends in a chat
+make align-lines                    # ends in a chat
 make prep-diffs
 make resolve
 ```
@@ -165,7 +166,7 @@ Each ends in a Claude session that reports what it did and waits for you;
 nothing in `input/` changes unless you say so there. Each has its own notes
 file in `input/`, kept by `make init`: `notes_markers.md` for
 `align-pages`, `notes_gaps.md` for `fix-gaps`, `notes_lines.md` for
-`align-lines`, to come.
+`align-lines`.
 
 **align-pages** puts the source's page markers into the other text in place
 of its own. `SOURCE` is `base`, `suggester`, or a path to another file with
@@ -204,6 +205,22 @@ what was done, by kind, and the open cases, hardest first.
 edition. A `## Scribe` section in `notes_gaps.md` is passed to scribe as
 notes on the edition; the rest of the notes, being about the two texts,
 goes to the settler only.
+
+**align-lines** lines the two texts up line by line. Neither text's layout
+can simply be copied, so an agent per page (`agents/line-setter.md`) first
+sets out the base's lines from the page image and `notes_lines.md`: one
+line per prose paragraph, verses as verse lines, blocks separated by a
+blank line, and short introductions (`āgame`, `mūlam`) and headings as
+their own blocks. It changes only whitespace, and keeps each page's start
+and end, which say whether the page runs on from the one before.
+`scripts/lines.py` then refuses any page whose words changed, and carries
+the base's layout over to the suggester by aligning the words. It writes
+`tmp/lines/base.txt`, `suggester.txt` and `report.txt`.
+
+`LINES_MODEL=sonnet` runs the agents on a smaller model. In a test on four
+pages, it set them out as the default did, except for one verse the print
+runs on like prose: Sonnet kept it as printed, the default set it out as
+verse. Say which you want in `notes_lines.md`.
 
 ## Review
 
