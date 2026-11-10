@@ -188,10 +188,11 @@ off, the report says where (`LOST from page 214 on ... page(s) 214, 215,
 **fix-gaps** closes the big gaps: a run of about a line (8 words) or more
 that one text has and the other lacks, and a line repeated within a few
 lines in one text only, the usual OCR failure. Anything smaller is left to
-resolve. Each page with gaps goes through three agents: scribe
+resolve. Each page with gaps goes through two agents: scribe
 ([claude-sanskrit-scribe](https://github.com/tylergneill/claude-sanskrit-scribe))
-transcribes the page image on its own, scribe checks that transcription,
-and a settler (`agents/gap-settler.md`) decides each gap from the two
+transcribes the lines around each gap from the page image, finding them by
+the words just before and after, and without seeing the gap's text in
+either transcription; then a settler (`agents/gap-settler.md`) decides each gap from the two
 texts, scribe's reading as a second opinion, and the image, making both
 texts read the same there. A gap it can't decide, or a passage that isn't
 on the page's image at all, it leaves open. `scripts/gaps.py` then checks

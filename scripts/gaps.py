@@ -8,9 +8,9 @@ pages back together.
                                 tmp/gaps/base.txt, suggester.txt, report.txt
 
 make fix-gaps runs both inside a Claude session (agents/fix-gaps.md), with a
-workflow between them that takes each page through three agents: scribe
-transcribes the page image on its own, scribe checks that transcription,
-and a settler (agents/gap-settler.md) decides each gap from the two texts,
+workflow between them that takes each page through two agents: scribe
+transcribes the lines around each gap from the page image, on its own, and
+a settler (agents/gap-settler.md) decides each gap from the two texts,
 scribe's reading and the image.
 
 A gap is either
@@ -24,8 +24,8 @@ find writes, per page with gaps, tmp/gaps/pages/NNNN/:
   base.txt, suggester.txt   the page in each text, for the settler to edit
   before/                   the same, untouched, for apply to compare with
   gaps.json, gaps.md        the gaps, for apply and for the settler
-  scribe_task.md, scribe_verify.md
-                            scribe's prompts for the page
+  scribe_task.md            scribe's prompt: transcribe the lines around
+                            each gap, found by the words before and after it
 and a scribe project in tmp/gaps/scribe/ (its images and transcriptions in
 tmp/gaps/scribe/work/). A page that already has decisions.json is kept as
 it is, so an interrupted run picks up where it stopped.
@@ -68,21 +68,22 @@ GRAM = 4
 SHARED = 0.5
 # A long passage is checked in pieces this many words long.
 CHUNK = 16
+# Gaps covering more than this share of a page, in either text, get scribe
+# reading the whole page rather than excerpts.
+WHOLE = 0.5
 # Words of context shown on either side of a gap.
 CONTEXT = 6
 
 WORKFLOW = """export const meta = {
   name: 'fix-gaps',
-  description: 'Per page: scribe reads the image, scribe checks its reading, then the gaps are settled',
-  phases: [{ title: 'Transcribe' }, { title: 'Check' }, { title: 'Settle' }],
+  description: 'Per page: scribe reads the lines around each gap from the image, then the gaps are settled',
+  phases: [{ title: 'Transcribe' }, { title: 'Settle' }],
 }
 const SETTLE = %s
 const label = dir => dir.split('/').pop()
 await pipeline(args,
-  dir => agent(`If ${dir}/scribe.done exists, reply "skip" and stop. Otherwise read and carry out the task in ${dir}/scribe_task.md.`,
+  dir => agent(`If ${dir}/scribe.done exists, reply "skip" and stop. Otherwise read and carry out the task in ${dir}/scribe_task.md, then create the empty file ${dir}/scribe.done.`,
     { label: 'read ' + label(dir), phase: 'Transcribe', agentType: 'general-purpose' }),
-  (_, dir) => agent(`If ${dir}/scribe.done exists, reply "skip" and stop. Otherwise read and carry out the task in ${dir}/scribe_verify.md, then create the empty file ${dir}/scribe.done.`,
-    { label: 'check ' + label(dir), phase: 'Check', agentType: 'general-purpose' }),
   (_, dir) => agent(SETTLE + '\\n' + dir,
     { label: 'settle ' + label(dir), phase: 'Settle', agentType: 'general-purpose' }),
 )
@@ -302,7 +303,7 @@ def find(args):
         return {p: grams("\n".join(lines[slice(*blocks[p])]).split()) for p in blocks}
     norm_pages = {"base": page_grams(blines, bblocks), "suggester": page_grams(slines, sblocks)}
 
-    todo, kept, total = [], [], 0
+    todo, kept, total, todo_gaps = [], [], 0, {}
     for page in pages:
         btext = "\n".join(blines[slice(*bblocks[page])])
         stext = "\n".join(slines[slice(*sblocks[page])])
@@ -324,6 +325,12 @@ def find(args):
             shutil.rmtree(d, ignore_errors=True)
             continue
         total += len(gaps)
+        # A page scribed before excerpts (one whole-page file, and a check
+        # pass) has no reading where the settler now looks: scribe it again.
+        sout = OUT / "scribe" / "work" / "out"
+        if not (sout / f"p{page:04d}").is_dir():
+            (d / "scribe.done").unlink(missing_ok=True)
+        (d / "scribe_verify.md").unlink(missing_ok=True)
         (d / "before").mkdir(parents=True, exist_ok=True)
         for role, text in (("base", btext), ("suggester", stext)):
             (d / f"{role}.txt").write_text(text, encoding="utf-8")
@@ -332,9 +339,10 @@ def find(args):
                                                 indent=2) + "\n", encoding="utf-8")
         (d / "gaps.md").write_text(gaps_md(page, gaps, btext, stext), encoding="utf-8")
         todo.append(page)
+        todo_gaps[page] = (gaps, btext, stext)
 
     if todo:
-        setup_scribe(todo, pdf, args.profile)
+        setup_scribe(todo_gaps, pdf, args.profile)
     write_workflow()
 
     print(f"pages compared: {len(pages)}")
@@ -345,23 +353,56 @@ def find(args):
     print("pages:", json.dumps([str((OUT / 'pages' / f'{p:04d}').resolve()) for p in todo]))
 
 
+def lettered(w):
+    return any(c.isalpha() for c in w)
+
+
+def anchors(text, span):
+    """The words just before and just after a gap on one side, for finding
+    it on the image: CONTEXT real words each way, with the marks between
+    them; ("", ...) when no real word comes before, as at the start of the
+    page, (..., "") when none comes after. A lone `|` finds nothing. Never
+    the gap's own words, so scribe's reading of them stays its own."""
+    ws = [w for w, _ in words(text)]
+    a, b = span
+    i, n = a, 0
+    while i > 0 and n < CONTEXT:
+        i -= 1
+        n += lettered(ws[i])
+    j, m = b, 0
+    while j < len(ws) and m < CONTEXT:
+        m += lettered(ws[j])
+        j += 1
+    return (" ".join(ws[i:a]) if n else "", " ".join(ws[b:j]) if m else "")
+
+
+def covered(text, gaps, role):
+    """The share of a page's words, on one side, that its gaps cover."""
+    total = len(words(text))
+    return sum(g[role][1] - g[role][0] for g in gaps) / total if total else 0
+
+
 def setup_scribe(pages, pdf, profile):
+    """pages: {page: (gaps, base text, suggester text)}. Renders scribe's images of the
+    pages, and writes each page's scribe_task.md: transcribe the lines
+    around each gap, not the whole page."""
+    from sanskrit_scribe.common import REPO as SCRIBE
     sdir = (OUT / "scribe").resolve()
     work = sdir / "work"
     project = sdir / "project"
     project.mkdir(parents=True, exist_ok=True)
     offset = read_offset(Path(PAGES))
     notes = scribe_notes()
+    source = "the printed edition scanned in input/image.pdf"
     (project / "PROJECT.md").write_text(
-        "# Project: a second reading of selected pages\n\n"
-        "- Each page is transcribed whole, as usual, as an independent reading\n"
-        "  to check two existing e-texts against.\n"
+        "# Project: a second reading of parts of pages\n\n"
+        "- Only the excerpts asked for are transcribed, as an independent\n"
+        "  reading to check two existing e-texts against.\n"
         + (f"\n{notes}\n" if notes else ""), encoding="utf-8")
 
     def project_json(names):
         (project / "project.json").write_text(json.dumps({
-            "source": "the printed edition scanned in input/image.pdf",
-            "profile": profile, "pdf": str(pdf), "mode": "print", "dpi": 300,
+            "source": source, "profile": profile, "pdf": str(pdf), "mode": "print", "dpi": 300,
             "pages": {f"p{p:04d}": p + offset for p in names}}, indent=2) + "\n",
             encoding="utf-8")
 
@@ -370,15 +411,39 @@ def setup_scribe(pages, pdf, profile):
         project_json(missing)
         print(f"scribe: rendering {len(missing)} page image(s)", file=sys.stderr)
         scribe("prep", str(project), "--work", str(work))
-    project_json(pages)
-    for p in pages:
-        d = OUT / "pages" / f"{p:04d}"
+    project_json(sorted(pages))
+
+    template = (AGENTS / "scribe-excerpt.md").read_text(encoding="utf-8")
+    for p, (gaps, btext, stext) in pages.items():
         name = f"p{p:04d}"
-        (d / "scribe_task.md").write_text(
-            scribe("make_task", str(project), name, "--work", str(work)), encoding="utf-8")
-        (d / "scribe_verify.md").write_text(
-            scribe("make_task", str(project), name, "--verify", "--work", str(work)),
-            encoding="utf-8")
+        out = work / "out" / name
+        out.mkdir(parents=True, exist_ok=True)
+        listed = []
+        # Gaps over most of the page: one whole-page reading costs less than
+        # many excerpts to find.
+        if max(covered(btext, gaps, "base"), covered(stext, gaps, "suggester")) > WHOLE:
+            listed.append(f"   - {name}_page.txt\n"
+                          f"     Before: (start of page)\n"
+                          f"     After: (end of page)")
+        for k, g in enumerate([] if listed else gaps, 1):
+            # From both texts, when they differ: either may be wrong here,
+            # even holding another page's text.
+            both = [anchors(btext, g["base"]), anchors(stext, g["suggester"])]
+            befores = list(dict.fromkeys(b or "(start of page)" for b, _ in both))
+            afters = list(dict.fromkeys(a or "(end of page)" for _, a in both))
+            listed.append(f"   - {name}_g{k}.txt\n"
+                          f"     Before: {'  OR  '.join(befores)}\n"
+                          f"     After: {'  OR  '.join(afters)}")
+        crops = ", ".join(sorted(c.name for c in (work / "images").glob(f"{name}_*.png")))
+        values = {"source": source, "markup": str(SCRIBE / "core" / "MARKUP.md"),
+                  "profile": str(SCRIBE / "profiles" / profile / "PROFILE.md"),
+                  "project": str(project / "PROJECT.md"),
+                  "image": str(work / "images" / f"{name}.png"), "crops": crops,
+                  "out_dir": str(out), "excerpts": "\n".join(listed)}
+        text = template
+        for key, val in values.items():
+            text = text.replace("{" + key + "}", val)
+        (OUT / "pages" / f"{p:04d}" / "scribe_task.md").write_text(text, encoding="utf-8")
 
 
 def write_workflow():
@@ -388,9 +453,9 @@ def write_workflow():
         prompt = prompt.rstrip() + "\n\n## Editor's notes\n\n" + notes.read_text(encoding="utf-8").strip() + "\n"
     prompt += ("\n## Paths\n\n"
                f"- The page image is {Path(PAGES).resolve()}/NNNN/page.jpg, NNNN being your page.\n"
-               f"- Scribe's reading is {(OUT / 'scribe' / 'work' / 'out').resolve()}/pNNNN.txt; "
-               f"put it into your page directory as plain text with\n"
-               f"  `{sys.executable} -m sanskrit_scribe.export <that file> --to IAST -o <your page directory>/scribe.txt`\n"
+               f"- Scribe's reading is in {(OUT / 'scribe' / 'work' / 'out').resolve()}/pNNNN/, "
+               f"one file per gap; put it into your page directory as plain text with\n"
+               f"  `{sys.executable} -m sanskrit_scribe.export <that folder> --to IAST --marker \"<{{n}}>\" -o <your page directory>/scribe.txt`\n"
                "\nYour page directory:")
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "fix-gaps.js").write_text(WORKFLOW % json.dumps(prompt, ensure_ascii=False),

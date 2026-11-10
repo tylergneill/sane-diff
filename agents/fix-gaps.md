@@ -16,8 +16,8 @@ unless the user tells you to.
    still to do.
 3. If the list is empty, go to step 4. Otherwise start one Workflow with
    that script as `scriptPath` and the list as `args`. It takes each page
-   through three agents: scribe transcribes the image, scribe checks the
-   transcription, and a settler (`agents/gap-settler.md`) decides each gap.
+   through two agents: scribe transcribes the lines around each gap from
+   the image, and a settler (`agents/gap-settler.md`) decides each gap.
    Do not settle pages yourself.
 4. When the workflow is done, run `python3 scripts/gaps.py apply`. It
    checks that every page's edits stay within its gaps, writes

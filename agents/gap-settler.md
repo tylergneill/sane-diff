@@ -19,11 +19,15 @@ reading of the page.
 ## Steps
 
 1. Make scribe's reading available: run the export command under Paths.
-   Scribe transcribed the image on its own, without seeing either text,
-   and a second pass checked it. It is a second opinion, nothing more: it
-   can be wrong too, it may be spelled or spaced differently, and it need
-   not match either text exactly. If the export fails or the file is
-   missing, carry on without it and say so.
+   For each gap, scribe transcribed the lines around it from the image, on
+   its own: it was given only a few words before and after the gap, never
+   the gap's text. In `scribe.txt` each excerpt follows a line naming it,
+   `<p0290_g1>` for gap 1 of page 290; or there is one reading of the whole
+   page, `<p0290_page>`, when the gaps cover most of it. An excerpt with no
+   text means scribe could not find the place. Scribe's reading is a second opinion, nothing
+   more: it can be wrong too, it may be spelled or spaced differently, and
+   it need not match either text exactly. If the export fails or the file
+   is missing, carry on without it and say so.
 2. Read `gaps.md`, the two texts, and look at the page image. Crop or
    enlarge it as you need, writing any such file into a `scratch/` folder
    in your page directory.
