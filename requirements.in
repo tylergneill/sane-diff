@@ -2,6 +2,11 @@
 # from input/image.pdf (prep.py and images.py call its `pdfimages`).
 #   brew install poppler
 
+# claude-sanskrit-scribe, a sibling checkout, installed editable: a second,
+# image-only reading where only one text has a passage (massage stage 2).
+# Brings numpy, Pillow and skrutable with it.
+-e ../claude-sanskrit-scribe
+
 # Gemini API runs (make resolve-gemini-no-vision)
 litellm
 

@@ -32,7 +32,7 @@ otherwise the model has to transliterate as it reads.
 | Python 3.9+ (tested on 3.11) | on macOS already, or `brew install python` | everything |
 | `make` | `xcode-select --install` | everything |
 | poppler | `brew install poppler` | extracting page images |
-| litellm, tqdm | `pip install -r requirements.txt` | the Gemini run; progress bars (optional) |
+| litellm, tqdm, claude-sanskrit-scribe | `pip install -r requirements.txt`, with [claude-sanskrit-scribe](https://github.com/tylergneill/claude-sanskrit-scribe) checked out beside this repo (installed editable) | the Gemini run; progress bars (optional); fix-gaps' second reading |
 | Claude Code | [claude.com/claude-code](https://claude.com/claude-code), then run `claude` once to log in (Max plan or higher recommended; see below) | the Claude runs |
 | Gemini API key | `GEMINI_API_KEY=...` in `.env` at the repo root (gitignored), or in your environment | the Gemini run |
 | meld | `brew install --cask meld` | optional: reading output against the base |
@@ -156,7 +156,7 @@ and `resolve`:
 make prep-images
 make align-pages SOURCE=suggester   # ends in a chat
 make prep-diffs
-make fix-gaps                       # not built yet; ends in a chat
+make fix-gaps                       # ends in a chat
 make prep-diffs
 make resolve
 ```
@@ -184,6 +184,25 @@ happened on each: old markers misnumbered, a marker missing, the transfer
 unsure but right, or wrong. If a passage one text lacks throws the transfer
 off, the report says where (`LOST from page 214 on ... page(s) 214, 215,
 216 not in the base`): close that gap first, then run it again.
+
+**fix-gaps** closes the big gaps: a run of about a line (8 words) or more
+that one text has and the other lacks, and a line repeated within a few
+lines in one text only, the usual OCR failure. Anything smaller is left to
+resolve. Each page with gaps goes through three agents: scribe
+([claude-sanskrit-scribe](https://github.com/tylergneill/claude-sanskrit-scribe))
+transcribes the page image on its own, scribe checks that transcription,
+and a settler (`agents/gap-settler.md`) decides each gap from the two
+texts, scribe's reading as a second opinion, and the image, making both
+texts read the same there. A gap it can't decide, or a passage that isn't
+on the page's image at all, it leaves open. `scripts/gaps.py` then checks
+that every change falls within a gap (a page whose edits stray is set
+aside), and writes `tmp/gaps/base.txt`, `suggester.txt` and `report.txt`:
+what was done, by kind, and the open cases, hardest first.
+
+`SCRIBE_PROFILE` (default `deva_print`) is scribe's profile for the
+edition. A `## Scribe` section in `notes_gaps.md` is passed to scribe as
+notes on the edition; the rest of the notes, being about the two texts,
+goes to the settler only.
 
 ## Review
 

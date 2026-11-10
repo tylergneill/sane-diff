@@ -4,6 +4,7 @@
 #   make prep-images                 # page images, kept until clean-up
 #   make align-pages                 # complete page markers (SOURCE=suggester)
 #   make prep-diffs                  # again whenever the texts change
+#   make fix-gaps                    # close the big gaps, then prep-diffs again
 #   make resolve                     # Claude, per item, with the page image
 #   make resolve-claude-no-vision    # Claude, per item, without it
 #   make resolve-gemini-no-vision    # Gemini API, whole pages, without it
@@ -47,7 +48,7 @@ lang_words  = $(if $(LANGUAGE), The texts are in $(LANGUAGE).)
 workers_flag  = $(if $(WORKERS),--workers $(WORKERS))
 workers_words = $(if $(WORKERS), Keep up to $(WORKERS) sub-agents in flight at a time.)
 
-.PHONY: init prep-images align-pages prep-diffs resolve resolve-claude-no-vision \
+.PHONY: init prep-images align-pages prep-diffs fix-gaps resolve resolve-claude-no-vision \
         resolve-gemini-no-vision report review-items review-items-summary review-items-no-vision \
         review-items-no-vision-summary clean-up renumber
 
@@ -72,6 +73,15 @@ align-pages:
 prep-diffs:
 	$(PYTHON) scripts/prep.py $(pages_flag)
 	$(PYTHON) scripts/pending.py --run $(RUN) $(pages_flag)
+
+# fix-gaps: close the big gaps (passages one text lacks, lines the OCR
+# repeated), in a Claude session that runs scribe and a settler agent per
+# page and talks the result through. Writes tmp/gaps/; input/ changes only
+# when you say so in the session. SCRIBE_PROFILE is scribe's profile for
+# the edition.
+SCRIBE_PROFILE ?= deva_print
+fix-gaps:
+	claude "Close the big gaps between the two texts following agents/fix-gaps.md, with scribe profile $(SCRIBE_PROFILE). Use a workflow.$(pages_words)"
 
 # resolve runs whichever of the combinations below BACKEND, UNIT and VISION
 # name. Each run writes its report itself: a Claude run inside its Claude
