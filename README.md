@@ -149,7 +149,7 @@ prompt 12` prints exactly what page 12 is sent.
 ## Getting the two texts to line up
 
 Before resolving, the two texts often need work to line up: page markers,
-big gaps, then line format. The steps for these sit between `prep-images`
+big gaps, then line by line. The steps for these sit between `prep-images`
 and `resolve`:
 
 ```sh
@@ -164,8 +164,8 @@ make resolve
 Each ends in a Claude session that reports what it did and waits for you;
 nothing in `input/` changes unless you say so there. Each has its own notes
 file in `input/`, kept by `make init`: `notes_markers.md` for
-`align-pages`, `notes_gaps.md` for `fix-gaps`, `notes_format.md` for the
-format step to come.
+`align-pages`, `notes_gaps.md` for `fix-gaps`, `notes_lines.md` for
+`align-lines`, to come.
 
 **align-pages** puts the source's page markers into the other text in place
 of its own. `SOURCE` is `base`, `suggester`, or a path to another file with

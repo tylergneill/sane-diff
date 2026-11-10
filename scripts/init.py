@@ -19,8 +19,8 @@ from pathlib import Path
 
 INPUT = Path("input")
 # notes.md is resolve's; notes_markers.md is align-pages', notes_gaps.md
-# fix-gaps', notes_format.md the format step's.
-KEEP = {"notes.md", "notes_markers.md", "notes_gaps.md", "notes_format.md"}
+# fix-gaps', notes_lines.md align-lines'.
+KEEP = {"notes.md", "notes_markers.md", "notes_gaps.md", "notes_lines.md"}
 CLEARED = (Path("tmp"), Path("output"))
 
 
