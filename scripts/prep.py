@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
-"""Item unit, stage one: turn base.txt, suggester.txt and image.pdf into
-tmp/pages/NNNN/.
+"""Turn base.txt and suggester.txt into tmp/pages/NNNN/diffs.json (make prep-diffs).
 
-Fully deterministic, no model involved. Extracts each PDF page's embedded
-scan, splits both texts into per-page blocks on their page markers, diffs them
-line by line and then word by word, and writes one diffs.json per page
-that disagrees. Pages where the two texts agree get no directory at all.
+Fully deterministic, no model involved. Splits both texts into per-page
+blocks on their page markers, diffs them line by line and then word by word,
+and writes one diffs.json per page that disagrees.
 
 The two texts must be page- and line-aligned.
 
-Page images are extracted only if input/image.pdf exists. They are deleted
-again after each resolve run and brought back for review; images.py does
-both.
+It runs again whenever the texts change (after align-pages, after
+fix-gaps), so it rewrites the diffs from scratch: a page that now agrees
+loses its diffs.json. A page that already has verdicts or merged output and
+whose diffs would change is refused instead, since those results describe
+the old diffs; delete them to redo the page.
 
-Page markers carry the printed page number, which need not be the PDF's own
-page index; --pdf-offset maps one to the other. The offset is recorded in
-tmp/pages/prep.json so that images.py extracts the same PDF pages later.
+The page images are images.py's (make prep-images); this leaves them alone.
+The extraction code lives here, shared with images.py.
 """
 
 import argparse
@@ -197,6 +196,12 @@ def read_offset(work):
     return json.loads(run_file.read_text(encoding="utf-8"))["pdf_offset"]
 
 
+def has_results(page_dir):
+    """Whether a page has results made from its diffs or texts: a resolve
+    run's verdicts, or the Gemini run's merged pages."""
+    return any(page_dir.glob("verdicts*.json")) or any(page_dir.glob("merged/*.txt"))
+
+
 def _run(cmd, page_no):
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -213,16 +218,10 @@ def main():
                          "per file), or a regex whose group 1 is the page number")
     ap.add_argument("--pages", default=None,
                     help="restrict to these pages, e.g. 12-21 or 3,5,9")
-    ap.add_argument("--no-images", action="store_true",
-                    help="write diffs.json only, even if image.pdf exists")
-    ap.add_argument("--pdf-offset", default=0, type=int,
-                    help="PDF page index minus printed page number, e.g. -2 "
-                         "when printed page 3 is the PDF's first page")
     args = ap.parse_args()
 
     base_path = args.input / "base.txt"
     sugg_path = args.input / "suggester.txt"
-    pdf_path = args.input / "image.pdf"
     for p in (base_path, sugg_path):
         if not p.exists():
             die(f"missing input file: {p}")
@@ -245,34 +244,57 @@ def main():
     if wanted is not None:
         shared = [p for p in shared if p in wanted]
 
+    # Every page this run covers: the shared ones, and any left over from an
+    # earlier run whose page is now in only one text, or gone.
+    covered = set(shared)
+    if args.work.is_dir():
+        covered |= {int(d.name) for d in args.work.iterdir()
+                    if d.is_dir() and d.name.isdigit() and (d / "diffs.json").exists()
+                    and (wanted is None or int(d.name) in wanted)}
+
+    new = {}
+    for page_no in tqdm(sorted(covered), desc="diffing", unit="page"):
+        items = page_diffs(page_no, base[page_no], sugg[page_no]) if page_no in shared else []
+        new[page_no] = (len(items), json.dumps({"page": page_no, "items": items},
+                                               ensure_ascii=False, indent=2) + "\n") if items else None
+
+    stale = []
+    for page_no, entry in new.items():
+        text = entry and entry[1]
+        d = args.work / f"{page_no:04d}"
+        old = d / "diffs.json"
+        old_text = old.read_text(encoding="utf-8") if old.exists() else None
+        if old_text != text and has_results(d):
+            stale.append(page_no)
+    if stale:
+        die(f"the diffs would change on {len(stale)} page(s) that already have verdicts "
+            f"or merged output ({', '.join(map(str, stale[:10]))}"
+            f"{'...' if len(stale) > 10 else ''}); those results describe the old diffs. "
+            f"Delete them (verdicts*.json, merged/) to redo those pages, or put the old "
+            f"texts back")
+
     args.work.mkdir(parents=True, exist_ok=True)
-    (args.work / RUN_FILE).write_text(
-        json.dumps({"pdf_offset": args.pdf_offset}, indent=2) + "\n", encoding="utf-8")
-    with_diffs = []
-    total_items = 0
-    for page_no in tqdm(shared, desc="diffing", unit="page"):
-        items = page_diffs(page_no, base[page_no], sugg[page_no])
-        if not items:
+    with_diffs, dropped, total_items = [], [], 0
+    for page_no, entry in new.items():
+        d = args.work / f"{page_no:04d}"
+        if entry is None:
+            if (d / "diffs.json").exists():
+                (d / "diffs.json").unlink()
+                dropped.append(page_no)
             continue
         with_diffs.append(page_no)
-        total_items += len(items)
-        dest = args.work / f"{page_no:04d}"
-        dest.mkdir(parents=True, exist_ok=True)
-        (dest / "diffs.json").write_text(
-            json.dumps({"page": page_no, "items": items}, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-
-    if with_diffs and not args.no_images and pdf_path.exists():
-        extract_pages(pdf_path, args.work, with_diffs, args.pdf_offset)
+        total_items += entry[0]
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "diffs.json").write_text(entry[1], encoding="utf-8")
 
     clean = len(shared) - len(with_diffs)
     print(f"pages compared:   {len(shared)}")
     print(f"pages in agreement (skipped): {clean}")
     print(f"pages with diffs: {len(with_diffs)}")
     print(f"diff items:       {total_items}")
-    if not pdf_path.exists():
-        print(f"no {pdf_path}, so no page images: vision runs are unavailable")
+    if dropped:
+        print(f"pages that agree now and lost their diffs.json: {len(dropped)} "
+              f"({', '.join(map(str, dropped[:10]))}{'...' if len(dropped) > 10 else ''})")
 
 
 if __name__ == "__main__":

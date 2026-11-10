@@ -44,23 +44,26 @@ macOS `open`.
 
 ```sh
 make init BASE=path/to/base.txt SUGGESTER=path/to/suggester.txt IMAGE=path/to/image.pdf
-make prep-pending
+make prep-images
+make prep-diffs
 make resolve
 make review-items
+make clean-up
 ```
 
 | target | what it does | output |
 |---|---|---|
 | `init` | clears `input/` (except `notes.md`), `tmp/` and `output/`, asking first if the last two hold anything, then copies in the files. `IMAGE` is optional; without it only no-vision runs work. | |
-| `prep-pending` | finds every disagreement, page by page, and lists pages still to resolve | |
+| `prep-images` | extracts every page image from the PDF into `tmp/pages/NNNN/page.jpg`, where it stays until `clean-up` | |
+| `prep-diffs` | finds every disagreement, page by page, and lists pages still to resolve. Run it again whenever the texts change: a page that now agrees drops out, and a page whose diffs would change under existing verdicts is refused. | |
 | `resolve` | Claude sub-agents settle each disagreement, looking at the page image | `output/claude-vision/` |
 | `resolve-claude-no-vision` | the same, from the texts and notes only | `output/claude-no-vision/` |
 | `resolve-gemini-no-vision` | the Gemini API rewrites each page whole, as the old notebook did | `output/gemini-no-vision/` |
 | `review-items` | walks the `resolve` run's questionable verdicts, opening each page image | |
 | `review-items-summary` | counts the `resolve` run's verdicts by source and confidence | |
 | `review-items-no-vision`, `review-items-no-vision-summary` | the same for `resolve-claude-no-vision` | |
-| `report` | rewrites the `resolve` run's output from its verdicts, keeping the page images; `VISION=no` for `resolve-claude-no-vision`. Run it after settling verdicts in review. | `output/<run>/` |
-| `finish`, `finish-claude-no-vision`, `finish-gemini-no-vision` | `report`, then removes the page images. Each run ends with this on its own. | `output/<run>/` |
+| `report` | writes the `resolve` run's output from its verdicts; `VISION=no` for `resolve-claude-no-vision`. Each run ends with this on its own; run it again after settling verdicts in review. | `output/<run>/` |
+| `clean-up` | deletes the page images, the bulk of `tmp/`, and the crops agents made | |
 
 Every target takes `PAGES=3-5`. `resolve-claude-no-vision` takes
 `LANGUAGE=Latin` (or any language; the default is the `LANGUAGE` line in
@@ -76,7 +79,7 @@ concurrent Gemini calls (default 20, in `scripts/merge.py`).
 where the PDF starts:
 
 - If the markers already give printed page numbers (`=== 152 ===` on the PDF's
-  first page), give `prep-pending` the PDF page index minus the printed number,
+  first page), give `prep-images` the PDF page index minus the printed number,
   e.g. `PDF_OFFSET=-151` when the PDF starts at printed page 152, or
   `PDF_OFFSET=-2` when it starts at printed page 3.
 - If the markers count PDF pages from 1 (`=== 1 ===` on the PDF's first page,
@@ -89,12 +92,12 @@ where the PDF starts:
   writes `corrected.renumbered.txt` beside it.
 
 Directory `tmp/pages/NNNN/` takes the marker's number either way. Later image
-extraction reuses the offset `prep-pending` recorded in `tmp/pages/prep.json`.
+extraction reuses the offset `prep-images` recorded in `tmp/pages/prep.json`.
 
-Each `resolve*` finishes itself: it writes `output/<run>/`, then deletes the page
-images, the bulk of `tmp/`; the `review-items*` targets extract them again (fast).
-A Claude run finishes inside its Claude session, once no page is left to dispatch;
-if you end the session early, run its `finish` target yourself.
+Each `resolve*` ends by writing `output/<run>/`. A Claude run does this inside
+its Claude session, once no page is left to dispatch; if you end the session
+early, run `make report` yourself. The page images stay until `make clean-up`;
+the `review-items*` targets extract any that are missing.
 
 The `resolve*` targets differ along three axes:
 

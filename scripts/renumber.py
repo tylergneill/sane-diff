@@ -9,7 +9,7 @@ renumber the final text at the end.
     renumber.py corrected.txt --offset 151 --in-place
 
 The offset is added to each marker's number, so when the PDF starts at printed
-page 152 it is 151, the opposite sign of the PDF_OFFSET prep-pending would
+page 152 it is 151, the opposite sign of the PDF_OFFSET prep-images would
 have taken. Only the number changes; the rest of each marker line is kept.
 """
 

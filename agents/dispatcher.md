@@ -32,11 +32,11 @@ and how many sub-agents to keep in flight.
    script does this for you.
 4. When the workflows return, list the pending pages again, and run step 2
    again for what is left. Repeat until nothing is pending.
-5. Finish the run yourself, in this session: `make finish` for
-   `claude-vision`, `make finish-claude-no-vision` for `claude-no-vision`.
-   It writes `output/<run>/` and removes the page images. Finish even if some
-   pages failed, so what did finish is written. Then tell the user the run is
-   finished, or which pages failed, and show the report's summary.
+5. Finish the run yourself, in this session: `make report` for
+   `claude-vision`, `make report VISION=no` for `claude-no-vision`.
+   It writes `output/<run>/`. Report even if some pages failed, so what did
+   finish is written. Then tell the user the run is finished, or which pages
+   failed, and show the report's summary.
 
 ## What each sub-agent is told
 
