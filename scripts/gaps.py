@@ -465,10 +465,40 @@ def write_workflow():
 # ------------------------------------------------------------------ apply
 
 def changes(old, new):
-    """Word ranges of old that new changed: [(i1, i2)], an insertion as (i, i)."""
+    """The changes from old to new, each as every word range of old it could
+    stand for: [[(i1, i2), ...]], an insertion as (i, i).
+
+    A deletion or insertion next to text that repeats it could sit at any
+    point along the repeat: removing either copy of `X P P Y` gives
+    `X P Y`, and difflib reports whichever it happens to find. So such a
+    change is listed at every point it can slide to, and counts as inside a
+    gap if any of them is. A replacement stays where it is."""
     ow, nw = [w for w, _ in words(old)], [w for w, _ in words(new)]
-    return [(i1, i2) for op, i1, i2, _, _ in
-            difflib.SequenceMatcher(None, ow, nw, autojunk=False).get_opcodes() if op != "equal"]
+    out = []
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, ow, nw, autojunk=False).get_opcodes():
+        if op == "equal":
+            continue
+        spans = [(i1, i2)]
+        if op == "delete":
+            a, b = i1, i2
+            while a > 0 and ow[a - 1] == ow[b - 1]:
+                a, b = a - 1, b - 1
+                spans.append((a, b))
+            a, b = i1, i2
+            while b < len(ow) and ow[a] == ow[b]:
+                a, b = a + 1, b + 1
+                spans.append((a, b))
+        elif op == "insert":
+            i, a, b = i1, j1, j2
+            while a > 0 and nw[a - 1] == nw[b - 1]:
+                i, a, b = i - 1, a - 1, b - 1
+                spans.append((i, i))
+            i, a, b = i1, j1, j2
+            while b < len(nw) and nw[a] == nw[b]:
+                i, a, b = i + 1, a + 1, b + 1
+                spans.append((i, i))
+        out.append(spans)
+    return out
 
 
 def disagreements(btext, stext):
@@ -513,11 +543,15 @@ def apply(_args):
         # already disagreed (as when one side held another page's text);
         # text both sides agreed on is never touched.
         differ = disagreements(before["base"], before["suggester"])
-        changed = [(r, span) for r in ROLES for span in changes(before[r], after[r])]
-        stray = [(r, span) for r, span in changed
-                 if not within(span, gaps, r) and not within(span, differ, r)]
-        beside = sum(1 for r, span in changed if not within(span, gaps, r)
-                     and within(span, differ, r))
+        changed = [(r, spans) for r in ROLES for spans in changes(before[r], after[r])]
+
+        def inside(spans, ranges, r):
+            return any(within(s, ranges, r) for s in spans)
+
+        stray = [(r, spans[0]) for r, spans in changed
+                 if not inside(spans, gaps, r) and not inside(spans, differ, r)]
+        beside = sum(1 for r, spans in changed if not inside(spans, gaps, r)
+                     and inside(spans, differ, r))
         left = find_gaps(after["base"], after["suggester"])
         pages.append({"page": page, "gaps": gaps, "decisions": decisions, "stray": stray,
                       "beside": beside,
