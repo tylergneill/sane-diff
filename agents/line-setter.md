@@ -25,9 +25,7 @@ where they do, they win.
 
 ## Steps
 
-1. Read `base.txt` and look at the page image. Crop or enlarge it as you
-   need, writing any such file into a `scratch/` folder in your page
-   directory.
+1. Read `base.txt`, and look at the page image with the Read tool.
 2. Rewrite `base.txt` with the layout above, changing only spaces, line
    breaks and blank lines. Never add, drop, join, split or change a word or
    a mark.

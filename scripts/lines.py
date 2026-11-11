@@ -55,7 +55,7 @@ const PROMPT = %s
 const MODEL = %s
 await parallel(args.map(dir => () =>
   agent(PROMPT + '\\n' + dir, Object.assign(
-    { label: dir.split('/').pop(), phase: 'Set out', agentType: 'general-purpose' },
+    { label: dir.split('/').pop(), phase: 'Set out', agentType: 'lean-worker' },
     MODEL ? { model: MODEL } : {}))))
 """
 
